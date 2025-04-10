@@ -23,26 +23,26 @@ export default function PricingPlans() {
 
   const plans: PricingPlan[] = [
     {
-      name: "Free",
-      price: billingCycle === "monthly" ? "$0" : "$0",
-      description: "Basic resume optimization for casual job seekers.",
+      name: "Basic",
+      price: billingCycle === "monthly" ? "$19.99" : "$199.99",
+      description: "Perfect for active job seekers with a specific application in mind.",
       features: [
-        { title: "1 resume upload", included: true },
-        { title: "3 optimizations per month", included: true },
-        { title: "Basic ATS keyword analysis", included: true },
-        { title: "Standard job match scoring", included: true },
+        { title: "5 resume optimizations", included: true },
+        { title: "ATS keyword analysis", included: true },
+        { title: "Job match scoring", included: true },
         { title: "AI-powered suggestions", included: true },
         { title: "Export to PDF", included: true },
-        { title: "Access to templates", included: false },
-        { title: "Industry-specific tailoring", included: false },
+        { title: "Access to templates", included: true },
+        { title: "Industry-specific tailoring", included: true },
+        { title: "Priority support", included: false },
         { title: "Unlimited optimizations", included: false },
       ],
       buttonText: "Get Started",
     },
     {
       name: "Pro",
-      price: billingCycle === "monthly" ? "$19.99" : "$199.99",
-      description: "Advanced features for serious job seekers.",
+      price: billingCycle === "monthly" ? "$49.99" : "$499.99",
+      description: "For serious job hunters applying to multiple positions.",
       features: [
         { title: "Unlimited resume uploads", included: true },
         { title: "Unlimited optimizations", included: true },
