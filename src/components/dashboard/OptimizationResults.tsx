@@ -107,8 +107,32 @@ export default function OptimizationResults({
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
-              <div className="space-y-1.5">
-                {scoringRubric.map((category) => {
+              
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                {scoringRubric.slice(0, 5).map((category) => {
+                  const scorePercentage = (category.score / category.maxPoints) * 100;
+                  const variant = getScoreVariant(category.score, category.maxPoints);
+                  
+                  return (
+                    <TooltipProvider key={category.name}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="space-y-0.5 cursor-help">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs text-foreground/80">{category.name}</span>
+                            </div>
+                            <Progress value={scorePercentage} variant={variant} className="h-1" />
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent side="right">
+                          <p>{category.description}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  );
+                })}
+                
+                {scoringRubric.slice(5, 10).map((category) => {
                   const scorePercentage = (category.score / category.maxPoints) * 100;
                   const variant = getScoreVariant(category.score, category.maxPoints);
                   
