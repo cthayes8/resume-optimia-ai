@@ -56,10 +56,27 @@ const mockMissingKeywords = [
   "GraphQL",
 ];
 
+// Generate mock scores for the rubric categories
+const generateMockScores = () => {
+  return [
+    { name: "Keyword Match", maxPoints: 20, score: 14 },
+    { name: "Role Alignment", maxPoints: 15, score: 9 },
+    { name: "Skills Match", maxPoints: 15, score: 10 },
+    { name: "Achievements", maxPoints: 10, score: 5 },
+    { name: "Experience Level", maxPoints: 10, score: 7 },
+    { name: "Resume Structure", maxPoints: 10, score: 6 },
+    { name: "Customization", maxPoints: 10, score: 4 },
+    { name: "ATS Compatibility", maxPoints: 5, score: 3 },
+    { name: "Grammar & Spelling", maxPoints: 3, score: 2 },
+    { name: "Visual Appeal", maxPoints: 2, score: 1 }
+  ];
+};
+
 export default function Results() {
   const [score, setScore] = useState(58);
   const [missingKeywords, setMissingKeywords] = useState(mockMissingKeywords);
   const [suggestions, setSuggestions] = useState(mockSuggestions);
+  const [rubricScores, setRubricScores] = useState(generateMockScores());
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -117,6 +134,16 @@ export default function Results() {
       
       // Remove 2 missing keywords to show improvement
       setMissingKeywords(prev => prev.slice(2));
+      
+      // Update some of the rubric scores
+      setRubricScores(prev => {
+        const updated = [...prev];
+        // Improve keyword match score
+        updated[0].score = Math.min(updated[0].score + 2, updated[0].maxPoints);
+        // Improve customization score
+        updated[6].score = Math.min(updated[6].score + 2, updated[6].maxPoints);
+        return updated;
+      });
       
       toast({
         title: "Reoptimization complete",

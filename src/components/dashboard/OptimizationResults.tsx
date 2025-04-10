@@ -1,5 +1,5 @@
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -39,16 +39,16 @@ interface OptimizationResultsProps {
 
 // Resume scoring rubric categories
 const scoringRubric = [
-  { name: "Keyword Match", maxPoints: 20, description: "% of keywords from the job description found in the resume" },
-  { name: "Role Alignment", maxPoints: 15, description: "Match of job titles, responsibilities, and domain expertise" },
-  { name: "Skills Match", maxPoints: 15, description: "Technical and soft skills aligned with the JD (tools, platforms, traits)" },
-  { name: "Achievements", maxPoints: 10, description: "Impact shown using metrics, results, KPIs" },
-  { name: "Experience Level", maxPoints: 10, description: "Seniority and years of experience appropriate to role" },
-  { name: "Resume Structure", maxPoints: 10, description: "Clear sections, logical format, easy to read and scan" },
-  { name: "Customization", maxPoints: 10, description: "Resume is tailored to this specific job (title, summary, bullet focus)" },
-  { name: "ATS Compatibility", maxPoints: 5, description: "Proper formatting (no tables/images), standard fonts, parsable sections" },
-  { name: "Grammar & Spelling", maxPoints: 3, description: "No typos, clean grammar, professional tone" },
-  { name: "Visual Appeal", maxPoints: 2, description: "Clean layout, modern font, good use of white space" },
+  { name: "Keyword Match", maxPoints: 20, description: "% of keywords from the job description found in the resume", score: 14 },
+  { name: "Role Alignment", maxPoints: 15, description: "Match of job titles, responsibilities, and domain expertise", score: 9 },
+  { name: "Skills Match", maxPoints: 15, description: "Technical and soft skills aligned with the JD (tools, platforms, traits)", score: 10 },
+  { name: "Achievements", maxPoints: 10, description: "Impact shown using metrics, results, KPIs", score: 5 },
+  { name: "Experience Level", maxPoints: 10, description: "Seniority and years of experience appropriate to role", score: 7 },
+  { name: "Resume Structure", maxPoints: 10, description: "Clear sections, logical format, easy to read and scan", score: 6 },
+  { name: "Customization", maxPoints: 10, description: "Resume is tailored to this specific job (title, summary, bullet focus)", score: 4 },
+  { name: "ATS Compatibility", maxPoints: 5, description: "Proper formatting (no tables/images), standard fonts, parsable sections", score: 3 },
+  { name: "Grammar & Spelling", maxPoints: 3, description: "No typos, clean grammar, professional tone", score: 2 },
+  { name: "Visual Appeal", maxPoints: 2, description: "Clean layout, modern font, good use of white space", score: 1 },
 ];
 
 export default function OptimizationResults({
@@ -76,6 +76,13 @@ export default function OptimizationResults({
     return suggestions.filter(s => s.accepted).length;
   }, [suggestions]);
 
+  const getScoreVariant = (score: number, maxPoints: number) => {
+    const percentage = (score / maxPoints) * 100;
+    if (percentage >= 70) return "success";
+    if (percentage >= 40) return "warning";
+    return "danger";
+  };
+
   return (
     <div className="space-y-6">
       <div className="bg-background rounded-lg p-6 border shadow-sm">
@@ -92,12 +99,11 @@ export default function OptimizationResults({
           <div className="border-l hidden lg:block"></div>
           
           <div className="lg:w-1/2">
-            <div className="flex items-center mb-3">
-              <h3 className="text-lg font-semibold">Resume Scoring Rubric</h3>
+            <div className="space-y-3">
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-6 w-6 ml-1">
+                    <Button variant="ghost" size="icon" className="h-6 w-6 float-right">
                       <Info className="h-4 w-4" />
                     </Button>
                   </TooltipTrigger>
@@ -106,23 +112,31 @@ export default function OptimizationResults({
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
-            </div>
-            <div className="grid grid-cols-2 gap-2 text-sm">
-              {scoringRubric.map((category) => (
-                <TooltipProvider key={category.name}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div className="flex items-center justify-between py-1 px-2 rounded hover:bg-muted/50 cursor-help">
-                        <span className="text-foreground/80 truncate">{category.name}</span>
-                        <span className="font-medium">{category.maxPoints} pts</span>
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent side="right">
-                      <p>{category.description}</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              ))}
+              <div className="space-y-2">
+                {scoringRubric.map((category) => {
+                  const scorePercentage = (category.score / category.maxPoints) * 100;
+                  const variant = getScoreVariant(category.score, category.maxPoints);
+                  
+                  return (
+                    <TooltipProvider key={category.name}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="space-y-1 cursor-help">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm text-foreground/80">{category.name}</span>
+                              <span className="text-xs text-foreground/60">{category.score}/{category.maxPoints}</span>
+                            </div>
+                            <Progress value={scorePercentage} variant={variant} className="h-1.5" />
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent side="right">
+                          <p>{category.description}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  );
+                })}
+              </div>
             </div>
           </div>
         </div>
