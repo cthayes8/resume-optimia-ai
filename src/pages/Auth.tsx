@@ -65,6 +65,24 @@ export default function Auth() {
     }, 1500);
   };
 
+  const handleDemoLogin = () => {
+    setEmail("demo@example.com");
+    setPassword("demo123");
+    setIsLoading(true);
+    
+    // Simulate authentication
+    setTimeout(() => {
+      setIsLoading(false);
+      toast({
+        title: "Demo login successful",
+        description: "Welcome to the demo account!",
+      });
+      
+      // Redirect to dashboard
+      navigate('/dashboard');
+    }, 1500);
+  };
+
   return (
     <>
       <Helmet>
@@ -137,6 +155,16 @@ export default function Auth() {
                       required
                     />
                   </div>
+                  
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    className="w-full" 
+                    onClick={handleDemoLogin}
+                    disabled={isLoading}
+                  >
+                    Demo Login (Try Me!)
+                  </Button>
                 </CardContent>
                 <CardFooter className="flex flex-col">
                   <Button type="submit" className="w-full" disabled={isLoading}>
@@ -195,6 +223,16 @@ export default function Auth() {
                       Must be at least 8 characters
                     </p>
                   </div>
+                  
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    className="w-full" 
+                    onClick={handleDemoLogin}
+                    disabled={isLoading}
+                  >
+                    Try Demo Instead
+                  </Button>
                 </CardContent>
                 <CardFooter className="flex flex-col">
                   <Button type="submit" className="w-full" disabled={isLoading}>
