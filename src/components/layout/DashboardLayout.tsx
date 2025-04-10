@@ -1,6 +1,6 @@
 
 import { useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { 
   LayoutDashboard, 
   FileText, 
@@ -14,6 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { toast } from "sonner";
 
 const navigationItems = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -29,11 +30,19 @@ interface DashboardLayoutProps {
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
   const isMobile = useIsMobile();
 
   const handleLogout = () => {
-    // To be implemented with Supabase
-    console.log("Logging out...");
+    // Clear any saved user data
+    localStorage.removeItem("user");
+    localStorage.removeItem("token");
+    
+    // Display success notification
+    toast.success("Successfully signed out");
+    
+    // Redirect to home page
+    navigate("/");
   };
 
   return (

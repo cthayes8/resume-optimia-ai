@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Helmet } from "react-helmet";
 import { toast } from "sonner";
 import { UserCog, Lock, CreditCard, Bell, LogOut } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,6 +15,8 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 export default function Settings() {
+  const navigate = useNavigate();
+  
   // User data - in a real app, this would come from context or API
   const [user, setUser] = useState({
     name: "John Doe",
@@ -92,10 +95,15 @@ export default function Settings() {
 
   // Handle logout
   const handleLogout = () => {
-    // Simulate logout API call
-    setTimeout(() => {
-      window.location.href = "/";
-    }, 500);
+    // Clear any stored authentication data
+    localStorage.removeItem("user");
+    localStorage.removeItem("token");
+    
+    // Show toast notification
+    toast.success("Successfully signed out");
+    
+    // Redirect to home page
+    navigate("/");
   };
 
   return (
