@@ -56,27 +56,24 @@ const mockMissingKeywords = [
   "GraphQL",
 ];
 
-// Generate mock scores for the rubric categories
-const generateMockScores = () => {
-  return [
-    { name: "Keyword Match", maxPoints: 20, score: 14 },
-    { name: "Role Alignment", maxPoints: 15, score: 9 },
-    { name: "Skills Match", maxPoints: 15, score: 10 },
-    { name: "Achievements", maxPoints: 10, score: 5 },
-    { name: "Experience Level", maxPoints: 10, score: 7 },
-    { name: "Resume Structure", maxPoints: 10, score: 6 },
-    { name: "Customization", maxPoints: 10, score: 4 },
-    { name: "ATS Compatibility", maxPoints: 5, score: 3 },
-    { name: "Grammar & Spelling", maxPoints: 3, score: 2 },
-    { name: "Visual Appeal", maxPoints: 2, score: 1 }
-  ];
-};
+// Resume scoring rubric categories
+const scoringRubric = [
+  { name: "Keyword Match", maxPoints: 20, description: "% of keywords from the job description found in the resume", score: 14 },
+  { name: "Role Alignment", maxPoints: 15, description: "Match of job titles, responsibilities, and domain expertise", score: 9 },
+  { name: "Skills Match", maxPoints: 15, description: "Technical and soft skills aligned with the JD (tools, platforms, traits)", score: 10 },
+  { name: "Achievements", maxPoints: 10, description: "Impact shown using metrics, results, KPIs", score: 5 },
+  { name: "Experience Level", maxPoints: 10, description: "Seniority and years of experience appropriate to role", score: 7 },
+  { name: "Resume Structure", maxPoints: 10, description: "Clear sections, logical format, easy to read and scan", score: 6 },
+  { name: "Customization", maxPoints: 10, description: "Resume is tailored to this specific job (title, summary, bullet focus)", score: 4 },
+  { name: "ATS Compatibility", maxPoints: 5, description: "Proper formatting (no tables/images), standard fonts, parsable sections", score: 3 },
+  { name: "Grammar & Spelling", maxPoints: 3, description: "No typos, clean grammar, professional tone", score: 2 },
+  { name: "Visual Appeal", maxPoints: 2, description: "Clean layout, modern font, good use of white space", score: 1 },
+];
 
 export default function Results() {
   const [score, setScore] = useState(58);
   const [missingKeywords, setMissingKeywords] = useState(mockMissingKeywords);
   const [suggestions, setSuggestions] = useState(mockSuggestions);
-  const [rubricScores, setRubricScores] = useState(generateMockScores());
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -134,16 +131,6 @@ export default function Results() {
       
       // Remove 2 missing keywords to show improvement
       setMissingKeywords(prev => prev.slice(2));
-      
-      // Update some of the rubric scores
-      setRubricScores(prev => {
-        const updated = [...prev];
-        // Improve keyword match score
-        updated[0].score = Math.min(updated[0].score + 2, updated[0].maxPoints);
-        // Improve customization score
-        updated[6].score = Math.min(updated[6].score + 2, updated[6].maxPoints);
-        return updated;
-      });
       
       toast({
         title: "Reoptimization complete",

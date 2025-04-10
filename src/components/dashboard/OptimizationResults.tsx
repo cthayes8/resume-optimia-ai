@@ -1,4 +1,3 @@
-
 import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -36,20 +35,6 @@ interface OptimizationResultsProps {
   onDownload: () => void;
   onReoptimize: () => void;
 }
-
-// Resume scoring rubric categories
-const scoringRubric = [
-  { name: "Keyword Match", maxPoints: 20, description: "% of keywords from the job description found in the resume", score: 14 },
-  { name: "Role Alignment", maxPoints: 15, description: "Match of job titles, responsibilities, and domain expertise", score: 9 },
-  { name: "Skills Match", maxPoints: 15, description: "Technical and soft skills aligned with the JD (tools, platforms, traits)", score: 10 },
-  { name: "Achievements", maxPoints: 10, description: "Impact shown using metrics, results, KPIs", score: 5 },
-  { name: "Experience Level", maxPoints: 10, description: "Seniority and years of experience appropriate to role", score: 7 },
-  { name: "Resume Structure", maxPoints: 10, description: "Clear sections, logical format, easy to read and scan", score: 6 },
-  { name: "Customization", maxPoints: 10, description: "Resume is tailored to this specific job (title, summary, bullet focus)", score: 4 },
-  { name: "ATS Compatibility", maxPoints: 5, description: "Proper formatting (no tables/images), standard fonts, parsable sections", score: 3 },
-  { name: "Grammar & Spelling", maxPoints: 3, description: "No typos, clean grammar, professional tone", score: 2 },
-  { name: "Visual Appeal", maxPoints: 2, description: "Clean layout, modern font, good use of white space", score: 1 },
-];
 
 export default function OptimizationResults({
   score,
@@ -99,7 +84,7 @@ export default function OptimizationResults({
           <div className="border-l hidden lg:block"></div>
           
           <div className="lg:w-1/2">
-            <div className="space-y-3">
+            <div className="space-y-2">
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -112,7 +97,7 @@ export default function OptimizationResults({
                   </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 {scoringRubric.map((category) => {
                   const scorePercentage = (category.score / category.maxPoints) * 100;
                   const variant = getScoreVariant(category.score, category.maxPoints);
@@ -121,12 +106,11 @@ export default function OptimizationResults({
                     <TooltipProvider key={category.name}>
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <div className="space-y-1 cursor-help">
+                          <div className="space-y-0.5 cursor-help">
                             <div className="flex items-center justify-between">
-                              <span className="text-sm text-foreground/80">{category.name}</span>
-                              <span className="text-xs text-foreground/60">{category.score}/{category.maxPoints}</span>
+                              <span className="text-xs text-foreground/80">{category.name}</span>
                             </div>
-                            <Progress value={scorePercentage} variant={variant} className="h-1.5" />
+                            <Progress value={scorePercentage} variant={variant} className="h-1" />
                           </div>
                         </TooltipTrigger>
                         <TooltipContent side="right">
