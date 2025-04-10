@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Helmet } from "react-helmet";
 import { useNavigate } from "react-router-dom";
@@ -185,7 +184,7 @@ export default function Results() {
                 accepted: true 
               } 
             })
-            .eq('id', id);
+            .eq('id', parseInt(id)); // Convert string to number
 
           if (error) throw error;
         }
@@ -218,7 +217,7 @@ export default function Results() {
                 accepted: false
               } 
             })
-            .eq('id', id);
+            .eq('id', parseInt(id)); // Convert string to number
 
           if (error) throw error;
         }
