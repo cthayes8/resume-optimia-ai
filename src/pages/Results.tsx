@@ -169,6 +169,7 @@ export default function Results() {
           score={score}
           missingKeywords={missingKeywords}
           suggestions={suggestions}
+          scoringRubric={scoringRubric}
           onAcceptSuggestion={handleAcceptSuggestion}
           onRejectSuggestion={handleRejectSuggestion}
           onDownload={handleDownload}

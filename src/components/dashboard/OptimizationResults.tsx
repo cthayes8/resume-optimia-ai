@@ -1,3 +1,4 @@
+
 import { useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,6 +21,13 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
+interface ScoringCategory {
+  name: string;
+  maxPoints: number;
+  description: string;
+  score: number;
+}
+
 interface OptimizationResultsProps {
   score: number;
   missingKeywords: string[];
@@ -30,6 +38,7 @@ interface OptimizationResultsProps {
     accepted: boolean;
     type: "add" | "modify" | "remove";
   }[];
+  scoringRubric: ScoringCategory[];
   onAcceptSuggestion: (id: string) => void;
   onRejectSuggestion: (id: string) => void;
   onDownload: () => void;
@@ -40,6 +49,7 @@ export default function OptimizationResults({
   score,
   missingKeywords,
   suggestions,
+  scoringRubric,
   onAcceptSuggestion,
   onRejectSuggestion,
   onDownload,
