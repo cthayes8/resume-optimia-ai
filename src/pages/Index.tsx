@@ -1,5 +1,6 @@
 
 import { Helmet } from "react-helmet";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import Navbar from "@/components/layout/Navbar";
 import HomeHero from "@/components/ui/HomeHero";
 import HowItWorks from "@/components/ui/HowItWorks";
@@ -16,17 +17,19 @@ export default function Index() {
         <meta name="description" content="AI-powered resume optimization to beat applicant tracking systems and land more interviews. Upload your resume and job description for instant analysis." />
       </Helmet>
       
-      <div className="flex flex-col min-h-screen">
-        <Navbar />
-        <main className="flex-grow">
-          <HomeHero />
-          <HowItWorks />
-          <Benefits />
-          <Testimonials />
-          <PricingPlans />
-        </main>
-        <Footer />
-      </div>
+      <TooltipProvider>
+        <div className="flex flex-col min-h-screen">
+          <Navbar />
+          <main className="flex-grow">
+            <HomeHero />
+            <HowItWorks />
+            <Benefits />
+            <Testimonials />
+            <PricingPlans />
+          </main>
+          <Footer />
+        </div>
+      </TooltipProvider>
     </>
   );
 }
