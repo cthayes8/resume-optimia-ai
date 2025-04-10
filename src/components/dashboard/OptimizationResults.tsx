@@ -55,6 +55,7 @@ interface OptimizationResultsProps {
   scoringRubric: ScoringCategory[];
   onAcceptSuggestion: (id: string) => void;
   onRejectSuggestion: (id: string) => void;
+  onSuggestionContentChange?: (id: string, content: string) => void;
   onDownload: () => void;
   onReoptimize: () => void;
 }
@@ -66,6 +67,7 @@ export default function OptimizationResults({
   scoringRubric,
   onAcceptSuggestion,
   onRejectSuggestion,
+  onSuggestionContentChange,
   onDownload,
   onReoptimize
 }: OptimizationResultsProps) {
@@ -98,8 +100,15 @@ export default function OptimizationResults({
     return suggestions.find(s => s.id === selectedSuggestion);
   }, [selectedSuggestion, suggestions]);
 
+  const handleContentChange = (content: string) => {
+    if (selectedSuggestion && onSuggestionContentChange) {
+      onSuggestionContentChange(selectedSuggestion, content);
+    }
+  };
+
   return (
     <div className="space-y-6">
+      {/* ATS Compatibility Score section */}
       <div className="bg-background rounded-lg p-6 border shadow-sm">
         <div className="flex flex-col lg:flex-row lg:items-start gap-6">
           <div className="flex-1">
@@ -305,10 +314,11 @@ export default function OptimizationResults({
                   <div className="bg-primary/5 rounded p-4">
                     <ResumeEditor 
                       content={activeSuggestion.suggestion} 
-                      editable={false}
+                      editable={!activeSuggestion.accepted}
                       showActions={!activeSuggestion.accepted}
                       onAccept={() => onAcceptSuggestion(activeSuggestion.id)}
                       onReject={() => setSelectedSuggestion(null)}
+                      onChange={handleContentChange}
                     />
                   </div>
                 </div>

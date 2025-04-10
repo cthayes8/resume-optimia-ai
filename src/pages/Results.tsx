@@ -7,6 +7,7 @@ import OptimizationResults from "@/components/dashboard/OptimizationResults";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 import { ArrowLeft } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 
 // Mock data for demonstration
 const mockSuggestions = [
@@ -74,6 +75,7 @@ export default function Results() {
   const [score, setScore] = useState(58);
   const [missingKeywords, setMissingKeywords] = useState(mockMissingKeywords);
   const [suggestions, setSuggestions] = useState(mockSuggestions);
+  const [optimizationSessionId, setOptimizationSessionId] = useState<string | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -84,27 +86,175 @@ export default function Results() {
     setScore(newScore);
   }, [suggestions]);
 
-  const handleAcceptSuggestion = (id: string) => {
+  // Save optimization session when component mounts
+  useEffect(() => {
+    const saveOptimizationSession = async () => {
+      try {
+        // Get user ID if authenticated
+        const { data: { user } } = await supabase.auth.getUser();
+        const userId = user?.id;
+
+        if (userId) {
+          // Create a new optimization session
+          const { data, error } = await supabase
+            .from('optimization_sessions')
+            .insert({
+              user_id: userId,
+              score_before: 58,
+              score_after: score,
+              missing_keywords: missingKeywords,
+              created_at: new Date().toISOString()
+            })
+            .select('id')
+            .single();
+
+          if (error) throw error;
+          
+          if (data) {
+            setOptimizationSessionId(data.id);
+            
+            // Save each suggestion
+            const suggestionsPromises = suggestions.map(suggestion => 
+              supabase
+                .from('optimizations')
+                .insert({
+                  optimization_session_id: data.id,
+                  original_content: suggestion.original,
+                  suggested_content: suggestion.suggestion,
+                  is_accepted: suggestion.accepted,
+                  suggestion_type: suggestion.type
+                })
+            );
+            
+            await Promise.all(suggestionsPromises);
+            
+            console.log('Optimization session saved with ID:', data.id);
+          }
+        }
+      } catch (error) {
+        console.error('Error saving optimization session:', error);
+      }
+    };
+
+    saveOptimizationSession();
+  }, []);
+
+  // Update the optimization session in Supabase when score changes
+  useEffect(() => {
+    const updateOptimizationScore = async () => {
+      if (optimizationSessionId) {
+        try {
+          const { error } = await supabase
+            .from('optimization_sessions')
+            .update({ 
+              score_after: score,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', optimizationSessionId);
+
+          if (error) throw error;
+        } catch (error) {
+          console.error('Error updating optimization score:', error);
+        }
+      }
+    };
+
+    updateOptimizationScore();
+  }, [score, optimizationSessionId]);
+
+  const handleAcceptSuggestion = async (id: string) => {
     setSuggestions(prev => 
       prev.map(s => s.id === id ? { ...s, accepted: true } : s)
     );
+    
+    // Update the suggestion in Supabase
+    if (optimizationSessionId) {
+      try {
+        const suggestion = suggestions.find(s => s.id === id);
+        if (suggestion) {
+          const { error } = await supabase
+            .from('optimizations')
+            .update({ is_accepted: true })
+            .eq('optimization_session_id', optimizationSessionId)
+            .eq('suggested_content', suggestion.suggestion);
+
+          if (error) throw error;
+        }
+      } catch (error) {
+        console.error('Error updating suggestion:', error);
+      }
+    }
+    
     toast({
       title: "Suggestion applied",
       description: "The suggestion has been applied to your resume",
     });
   };
 
-  const handleRejectSuggestion = (id: string) => {
+  const handleRejectSuggestion = async (id: string) => {
     setSuggestions(prev => 
       prev.map(s => s.id === id ? { ...s, accepted: false } : s)
     );
+    
+    // Update the suggestion in Supabase
+    if (optimizationSessionId) {
+      try {
+        const suggestion = suggestions.find(s => s.id === id);
+        if (suggestion) {
+          const { error } = await supabase
+            .from('optimizations')
+            .update({ is_accepted: false })
+            .eq('optimization_session_id', optimizationSessionId)
+            .eq('suggested_content', suggestion.suggestion);
+
+          if (error) throw error;
+        }
+      } catch (error) {
+        console.error('Error updating suggestion:', error);
+      }
+    }
   };
 
-  const handleDownload = () => {
+  const handleSuggestionContentChange = (id: string, newContent: string) => {
+    setSuggestions(prev => 
+      prev.map(s => s.id === id ? { ...s, suggestion: newContent } : s)
+    );
+  };
+
+  const handleDownload = async () => {
     toast({
       title: "Resume downloaded",
       description: "Your optimized resume has been downloaded",
     });
+    
+    // Save the optimized resume to Supabase
+    if (optimizationSessionId) {
+      try {
+        // Combine all accepted suggestions into a single HTML document
+        const optimizedContent = suggestions
+          .filter(s => s.accepted)
+          .map(s => s.suggestion)
+          .join('');
+        
+        const { data: { user } } = await supabase.auth.getUser();
+        const userId = user?.id;
+        
+        if (userId) {
+          const { error } = await supabase
+            .from('optimized_resumes')
+            .insert({
+              user_id: userId,
+              optimization_session_id: optimizationSessionId,
+              content: optimizedContent,
+              score: score
+            });
+
+          if (error) throw error;
+        }
+      } catch (error) {
+        console.error('Error saving optimized resume:', error);
+      }
+    }
     
     // In a real app, this would trigger the download of the optimized resume
     console.log("Downloading optimized resume...");
@@ -172,6 +322,7 @@ export default function Results() {
           scoringRubric={scoringRubric}
           onAcceptSuggestion={handleAcceptSuggestion}
           onRejectSuggestion={handleRejectSuggestion}
+          onSuggestionContentChange={handleSuggestionContentChange}
           onDownload={handleDownload}
           onReoptimize={handleReoptimize}
         />
