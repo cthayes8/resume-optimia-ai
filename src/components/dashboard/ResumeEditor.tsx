@@ -297,7 +297,8 @@ export default function ResumeEditor({
         </div>
       )}
       
-      <style jsx>{`
+      <style>
+        {`
         [data-active="true"] {
           background-color: rgb(243 244 246);
           color: rgb(79 70 229);
@@ -315,7 +316,8 @@ export default function ResumeEditor({
           height: 0;
           pointer-events: none;
         }
-      `}</style>
+      `}
+      </style>
     </div>
   );
 }

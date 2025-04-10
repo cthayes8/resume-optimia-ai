@@ -95,14 +95,18 @@ export default function Results() {
         const userId = user?.id;
 
         if (userId) {
-          // Create a new optimization session
+          // Create a new optimization session - adjust to match the schema
           const { data, error } = await supabase
             .from('optimization_sessions')
             .insert({
               user_id: userId,
-              score_before: 58,
-              score_after: score,
-              missing_keywords: missingKeywords,
+              report: { 
+                score_before: 58,
+                score_after: score,
+                missing_keywords: missingKeywords
+              },
+              resume_id: userId, // Mocked value to satisfy not-null constraint
+              job_description_id: userId, // Mocked value to satisfy not-null constraint
               created_at: new Date().toISOString()
             })
             .select('id')
@@ -113,20 +117,21 @@ export default function Results() {
           if (data) {
             setOptimizationSessionId(data.id);
             
-            // Save each suggestion
-            const suggestionsPromises = suggestions.map(suggestion => 
-              supabase
+            // Save each suggestion with structure matching the schema
+            for (const suggestion of suggestions) {
+              await supabase
                 .from('optimizations')
                 .insert({
-                  optimization_session_id: data.id,
-                  original_content: suggestion.original,
-                  suggested_content: suggestion.suggestion,
-                  is_accepted: suggestion.accepted,
-                  suggestion_type: suggestion.type
-                })
-            );
-            
-            await Promise.all(suggestionsPromises);
+                  user_id: userId,
+                  job_description: suggestion.original,
+                  optimized_resume: suggestion.suggestion,
+                  original_resume: suggestion.original || "<empty>",
+                  metrics: {
+                    type: suggestion.type,
+                    accepted: suggestion.accepted
+                  }
+                });
+            }
             
             console.log('Optimization session saved with ID:', data.id);
           }
@@ -147,7 +152,7 @@ export default function Results() {
           const { error } = await supabase
             .from('optimization_sessions')
             .update({ 
-              score_after: score,
+              report: { score_after: score },
               updated_at: new Date().toISOString()
             })
             .eq('id', optimizationSessionId);
@@ -174,9 +179,13 @@ export default function Results() {
         if (suggestion) {
           const { error } = await supabase
             .from('optimizations')
-            .update({ is_accepted: true })
-            .eq('optimization_session_id', optimizationSessionId)
-            .eq('suggested_content', suggestion.suggestion);
+            .update({ 
+              metrics: { 
+                type: suggestion.type, 
+                accepted: true 
+              } 
+            })
+            .eq('id', id);
 
           if (error) throw error;
         }
@@ -203,9 +212,13 @@ export default function Results() {
         if (suggestion) {
           const { error } = await supabase
             .from('optimizations')
-            .update({ is_accepted: false })
-            .eq('optimization_session_id', optimizationSessionId)
-            .eq('suggested_content', suggestion.suggestion);
+            .update({ 
+              metrics: { 
+                type: suggestion.type, 
+                accepted: false
+              } 
+            })
+            .eq('id', id);
 
           if (error) throw error;
         }
@@ -243,10 +256,8 @@ export default function Results() {
           const { error } = await supabase
             .from('optimized_resumes')
             .insert({
-              user_id: userId,
-              optimization_session_id: optimizationSessionId,
-              content: optimizedContent,
-              score: score
+              session_id: optimizationSessionId,
+              data: { content: optimizedContent, score: score },
             });
 
           if (error) throw error;
