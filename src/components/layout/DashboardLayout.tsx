@@ -9,12 +9,14 @@ import {
   LogOut, 
   Menu, 
   X, 
-  ChevronRight
+  ChevronRight,
+  ChevronLeft
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { toast } from "sonner";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 const navigationItems = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -29,6 +31,7 @@ interface DashboardLayoutProps {
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
@@ -56,13 +59,15 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       )}
 
       {/* Sidebar */}
-      <div 
+      <Collapsible
+        open={!sidebarCollapsed}
+        onOpenChange={(open) => setSidebarCollapsed(!open)}
         className={`${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
-        } fixed inset-y-0 left-0 z-50 w-64 bg-sidebar border-r border-sidebar-border md:translate-x-0 md:static md:z-0 transition-transform duration-300 ease-in-out`}
+        } fixed inset-y-0 left-0 z-50 bg-sidebar border-r border-sidebar-border md:translate-x-0 md:static md:z-0 transition-all duration-300 ease-in-out`}
       >
-        <div className="flex h-16 items-center px-6 border-b border-sidebar-border">
-          <Link to="/dashboard" className="flex items-center gap-2">
+        <div className={`flex h-16 items-center px-6 border-b border-sidebar-border justify-between`}>
+          <Link to="/dashboard" className={`flex items-center gap-2 ${sidebarCollapsed ? 'hidden' : ''}`}>
             <svg
               xmlns="http://www.w3.org/2000/svg"
               width="24"
@@ -84,7 +89,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             </svg>
             <span className="font-semibold text-sidebar-foreground">ATS Optimizer</span>
           </Link>
-          {isMobile && (
+          {isMobile ? (
             <Button
               variant="ghost"
               size="icon"
@@ -93,44 +98,58 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             >
               <X size={20} />
             </Button>
+          ) : (
+            <CollapsibleTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="ml-auto"
+                aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              >
+                {sidebarCollapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
+              </Button>
+            </CollapsibleTrigger>
           )}
         </div>
-        <ScrollArea className="h-[calc(100vh-64px)] py-4">
-          <nav className="px-2 space-y-1">
-            {navigationItems.map((item) => {
-              const isActive = location.pathname === item.href;
-              return (
-                <Link
-                  key={item.name}
-                  to={item.href}
-                  className={`flex items-center gap-3 px-3 py-2 rounded-md group transition-colors ${
-                    isActive
-                      ? "bg-sidebar-accent text-sidebar-primary font-medium"
-                      : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                  }`}
-                  onClick={() => isMobile && setSidebarOpen(false)}
-                >
-                  <item.icon size={20} />
-                  <span>{item.name}</span>
-                  {isActive && (
-                    <ChevronRight size={16} className="ml-auto" />
-                  )}
-                </Link>
-              );
-            })}
-          </nav>
-          <div className="mt-auto pt-4 px-2">
-            <Button
-              variant="ghost"
-              className="w-full justify-start text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-              onClick={handleLogout}
-            >
-              <LogOut size={20} className="mr-3" />
-              Sign Out
-            </Button>
-          </div>
-        </ScrollArea>
-      </div>
+        
+        <CollapsibleContent className="h-[calc(100vh-64px)]" forceMount>
+          <ScrollArea className="h-full py-4">
+            <nav className="px-2 space-y-1">
+              {navigationItems.map((item) => {
+                const isActive = location.pathname === item.href;
+                return (
+                  <Link
+                    key={item.name}
+                    to={item.href}
+                    className={`flex items-center gap-3 px-3 py-2 rounded-md group transition-colors ${
+                      isActive
+                        ? "bg-sidebar-accent text-sidebar-primary font-medium"
+                        : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                    }`}
+                    onClick={() => isMobile && setSidebarOpen(false)}
+                  >
+                    <item.icon size={20} />
+                    {!sidebarCollapsed && <span>{item.name}</span>}
+                    {isActive && !sidebarCollapsed && (
+                      <ChevronRight size={16} className="ml-auto" />
+                    )}
+                  </Link>
+                );
+              })}
+            </nav>
+            <div className="mt-auto pt-4 px-2">
+              <Button
+                variant="ghost"
+                className={`w-full ${sidebarCollapsed ? 'justify-center' : 'justify-start'} text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground`}
+                onClick={handleLogout}
+              >
+                <LogOut size={20} className={sidebarCollapsed ? '' : 'mr-3'} />
+                {!sidebarCollapsed && <span>Sign Out</span>}
+              </Button>
+            </div>
+          </ScrollArea>
+        </CollapsibleContent>
+      </Collapsible>
 
       {/* Main content */}
       <div className="flex-1 flex flex-col overflow-hidden">
