@@ -1,14 +1,32 @@
-// Update this page (the content is just a fallback if you fail to update the page)
 
-const Index = () => {
+import { Helmet } from "react-helmet";
+import Navbar from "@/components/layout/Navbar";
+import HomeHero from "@/components/ui/HomeHero";
+import HowItWorks from "@/components/ui/HowItWorks";
+import Benefits from "@/components/ui/Benefits";
+import Testimonials from "@/components/ui/Testimonials";
+import PricingPlans from "@/components/ui/PricingPlans";
+import Footer from "@/components/ui/Footer";
+
+export default function Index() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold mb-4">Welcome to Your Blank App</h1>
-        <p className="text-xl text-gray-600">Start building your amazing project here!</p>
+    <>
+      <Helmet>
+        <title>Resume ATS Optimizer - Get Past the Bots, Land More Interviews</title>
+        <meta name="description" content="AI-powered resume optimization to beat applicant tracking systems and land more interviews. Upload your resume and job description for instant analysis." />
+      </Helmet>
+      
+      <div className="flex flex-col min-h-screen">
+        <Navbar />
+        <main className="flex-grow">
+          <HomeHero />
+          <HowItWorks />
+          <Benefits />
+          <Testimonials />
+          <PricingPlans />
+        </main>
+        <Footer />
       </div>
-    </div>
+    </>
   );
-};
-
-export default Index;
+}
