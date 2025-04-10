@@ -20,6 +20,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import ResumeEditor from "./ResumeEditor";
 
 interface ScoringCategory {
   name: string;
@@ -160,6 +161,7 @@ export default function OptimizationResults({
         </div>
       </div>
 
+      {/* Missing Keywords Section */}
       {missingKeywords.length > 0 && (
         <div className="bg-background rounded-lg p-6 border shadow-sm">
           <h3 className="text-lg font-semibold mb-3">Missing Keywords</h3>
@@ -176,6 +178,7 @@ export default function OptimizationResults({
         </div>
       )}
 
+      {/* AI Suggestions Section with Tiptap Pro */}
       <div className="bg-background rounded-lg border shadow-sm">
         <div className="p-6 border-b">
           <h3 className="text-xl font-semibold">AI Suggestions</h3>
@@ -227,19 +230,27 @@ export default function OptimizationResults({
                       </div>
                       
                       {suggestion.original && (
-                        <div className="mt-2 p-2 bg-muted/50 rounded text-sm text-foreground/70 relative">
-                          <span className="absolute -top-2 left-2 text-xs bg-background px-1 text-foreground/50">
+                        <div className="mt-2 relative">
+                          <span className="absolute -top-2 left-2 text-xs bg-background px-1 text-foreground/50 z-10">
                             Original
                           </span>
-                          {suggestion.original}
+                          <ResumeEditor 
+                            content={suggestion.original} 
+                            editable={false}
+                            className="bg-muted/50 rounded p-2 text-sm text-foreground/70"
+                          />
                         </div>
                       )}
                       
-                      <div className="mt-3 p-2 bg-primary/5 rounded text-sm relative">
-                        <span className="absolute -top-2 left-2 text-xs bg-background px-1 text-primary">
+                      <div className="mt-3 relative">
+                        <span className="absolute -top-2 left-2 text-xs bg-background px-1 text-primary z-10">
                           Suggestion
                         </span>
-                        {suggestion.suggestion}
+                        <ResumeEditor 
+                          content={suggestion.suggestion} 
+                          editable={false}
+                          className="bg-primary/5 rounded p-2 text-sm"
+                        />
                       </div>
                     </div>
                     
