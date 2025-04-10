@@ -11,8 +11,15 @@ import {
   AlertCircle,
   Download,
   CheckCircle,
-  RefreshCw
+  RefreshCw,
+  Info
 } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface OptimizationResultsProps {
   score: number;
@@ -29,6 +36,20 @@ interface OptimizationResultsProps {
   onDownload: () => void;
   onReoptimize: () => void;
 }
+
+// Resume scoring rubric categories
+const scoringRubric = [
+  { name: "Keyword Match", maxPoints: 20, description: "% of keywords from the job description found in the resume" },
+  { name: "Role Alignment", maxPoints: 15, description: "Match of job titles, responsibilities, and domain expertise" },
+  { name: "Skills Match", maxPoints: 15, description: "Technical and soft skills aligned with the JD (tools, platforms, traits)" },
+  { name: "Achievements", maxPoints: 10, description: "Impact shown using metrics, results, KPIs" },
+  { name: "Experience Level", maxPoints: 10, description: "Seniority and years of experience appropriate to role" },
+  { name: "Resume Structure", maxPoints: 10, description: "Clear sections, logical format, easy to read and scan" },
+  { name: "Customization", maxPoints: 10, description: "Resume is tailored to this specific job (title, summary, bullet focus)" },
+  { name: "ATS Compatibility", maxPoints: 5, description: "Proper formatting (no tables/images), standard fonts, parsable sections" },
+  { name: "Grammar & Spelling", maxPoints: 3, description: "No typos, clean grammar, professional tone" },
+  { name: "Visual Appeal", maxPoints: 2, description: "Clean layout, modern font, good use of white space" },
+];
 
 export default function OptimizationResults({
   score,
@@ -58,12 +79,53 @@ export default function OptimizationResults({
   return (
     <div className="space-y-6">
       <div className="bg-background rounded-lg p-6 border shadow-sm">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-xl font-semibold">ATS Compatibility Score</h3>
-          <span className={`text-3xl font-bold ${scoreColor}`}>{score}%</span>
+        <div className="flex flex-col lg:flex-row lg:items-start gap-6">
+          <div className="flex-1">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-semibold">ATS Compatibility Score</h3>
+              <span className={`text-3xl font-bold ${scoreColor}`}>{score}%</span>
+            </div>
+            <Progress value={score} className="h-2" />
+            <p className="mt-3 text-foreground/70">{scoreMessage}</p>
+          </div>
+          
+          <div className="border-l hidden lg:block"></div>
+          
+          <div className="lg:w-1/2">
+            <div className="flex items-center mb-3">
+              <h3 className="text-lg font-semibold">Resume Scoring Rubric</h3>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-6 w-6 ml-1">
+                      <Info className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent className="w-80">
+                    <p className="text-sm">Our scoring system evaluates your resume on 10 key metrics (total: 100 points)</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              {scoringRubric.map((category) => (
+                <TooltipProvider key={category.name}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="flex items-center justify-between py-1 px-2 rounded hover:bg-muted/50 cursor-help">
+                        <span className="text-foreground/80 truncate">{category.name}</span>
+                        <span className="font-medium">{category.maxPoints} pts</span>
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">
+                      <p>{category.description}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              ))}
+            </div>
+          </div>
         </div>
-        <Progress value={score} className="h-2" />
-        <p className="mt-3 text-foreground/70">{scoreMessage}</p>
       </div>
 
       {missingKeywords.length > 0 && (
