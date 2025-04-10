@@ -20,6 +20,19 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import ResumeEditor from "./ResumeEditor";
 
 interface ScoringCategory {
@@ -56,6 +69,8 @@ export default function OptimizationResults({
   onDownload,
   onReoptimize
 }: OptimizationResultsProps) {
+  const [selectedSuggestion, setSelectedSuggestion] = useState<string | null>(null);
+  
   const scoreColor = useMemo(() => {
     if (score >= 80) return "text-green-500";
     if (score >= 60) return "text-yellow-500";
@@ -78,6 +93,10 @@ export default function OptimizationResults({
     if (percentage >= 40) return "warning";
     return "danger";
   };
+
+  const activeSuggestion = useMemo(() => {
+    return suggestions.find(s => s.id === selectedSuggestion);
+  }, [selectedSuggestion, suggestions]);
 
   return (
     <div className="space-y-6">
@@ -178,7 +197,7 @@ export default function OptimizationResults({
         </div>
       )}
 
-      {/* AI Suggestions Section with Tiptap Pro */}
+      {/* AI Suggestions Section with side-by-side layout */}
       <div className="bg-background rounded-lg border shadow-sm">
         <div className="p-6 border-b">
           <h3 className="text-xl font-semibold">AI Suggestions</h3>
@@ -197,99 +216,126 @@ export default function OptimizationResults({
           </div>
         </div>
         
-        <ScrollArea className="h-[400px]">
-          <div className="space-y-4 p-6">
-            {suggestions.map((suggestion) => (
-              <div
-                key={suggestion.id}
-                className={`p-4 rounded-lg border ${
-                  suggestion.accepted
-                    ? "bg-green-500/5 border-green-500/20"
-                    : "bg-background"
-                }`}
-              >
-                <div className="flex items-start gap-3">
-                  <div className="mt-1">
-                    {suggestion.type === "add" ? (
-                      <AlertCircle className="h-5 w-5 text-yellow-500" />
-                    ) : suggestion.type === "modify" ? (
-                      <AlertCircle className="h-5 w-5 text-blue-500" />
-                    ) : (
-                      <XCircle className="h-5 w-5 text-red-500" />
-                    )}
-                  </div>
-                  <div className="flex-1 space-y-2">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="capitalize">
-                          {suggestion.type}
-                        </Badge>
-                        {suggestion.accepted && (
-                          <Badge className="bg-green-500 text-white">Applied</Badge>
+        <div className="flex flex-col md:flex-row">
+          {/* Left side: Suggestions list */}
+          <div className="md:w-1/2 border-r">
+            <ScrollArea className="h-[500px]">
+              <div className="space-y-4 p-6">
+                {suggestions.map((suggestion) => (
+                  <div
+                    key={suggestion.id}
+                    className={`p-4 rounded-lg border ${
+                      suggestion.accepted
+                        ? "bg-green-500/5 border-green-500/20"
+                        : suggestion.id === selectedSuggestion
+                        ? "bg-blue-500/5 border-blue-500/20"
+                        : "bg-background"
+                    } cursor-pointer transition-colors`}
+                    onClick={() => setSelectedSuggestion(suggestion.id)}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="mt-1">
+                        {suggestion.type === "add" ? (
+                          <AlertCircle className="h-5 w-5 text-yellow-500" />
+                        ) : suggestion.type === "modify" ? (
+                          <AlertCircle className="h-5 w-5 text-blue-500" />
+                        ) : (
+                          <XCircle className="h-5 w-5 text-red-500" />
                         )}
                       </div>
-                      
-                      {suggestion.original && (
-                        <div className="mt-2 relative">
-                          <span className="absolute -top-2 left-2 text-xs bg-background px-1 text-foreground/50 z-10">
-                            Original
-                          </span>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="capitalize">
+                            {suggestion.type}
+                          </Badge>
+                          {suggestion.accepted && (
+                            <Badge className="bg-green-500 text-white">Applied</Badge>
+                          )}
+                        </div>
+                        
+                        <div className="mt-2">
                           <ResumeEditor 
-                            content={suggestion.original} 
+                            content={suggestion.suggestion} 
                             editable={false}
-                            className="bg-muted/50 rounded p-2 text-sm text-foreground/70"
+                            className="text-sm line-clamp-2 overflow-hidden"
                           />
                         </div>
-                      )}
-                      
-                      <div className="mt-3 relative">
-                        <span className="absolute -top-2 left-2 text-xs bg-background px-1 text-primary z-10">
-                          Suggestion
-                        </span>
-                        <ResumeEditor 
-                          content={suggestion.suggestion} 
-                          editable={false}
-                          className="bg-primary/5 rounded p-2 text-sm"
-                        />
+                        
+                        {!suggestion.accepted && (
+                          <Button 
+                            size="sm" 
+                            className="mt-2 w-full"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onAcceptSuggestion(suggestion.id);
+                            }}
+                          >
+                            <CheckCircle className="h-4 w-4 mr-2" />
+                            Apply
+                          </Button>
+                        )}
                       </div>
                     </div>
-                    
-                    {!suggestion.accepted ? (
-                      <div className="flex gap-2 mt-3">
-                        <Button 
-                          size="sm" 
-                          className="flex-1"
-                          onClick={() => onAcceptSuggestion(suggestion.id)}
-                        >
-                          <CheckCircle className="h-4 w-4 mr-2" />
-                          Apply
-                        </Button>
-                        <Button 
-                          size="sm" 
-                          variant="outline" 
-                          className="flex-1"
-                          onClick={() => onRejectSuggestion(suggestion.id)}
-                        >
-                          <XCircle className="h-4 w-4 mr-2" />
-                          Ignore
-                        </Button>
-                      </div>
-                    ) : (
-                      <Button 
-                        size="sm" 
-                        variant="outline"
-                        className="mt-3 w-full"
-                        onClick={() => onRejectSuggestion(suggestion.id)}
-                      >
-                        Undo
-                      </Button>
-                    )}
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+          </div>
+          
+          {/* Right side: Preview of selected suggestion */}
+          <div className="md:w-1/2 p-6">
+            {activeSuggestion ? (
+              <div>
+                <h4 className="text-lg font-medium mb-4">Preview Suggestion</h4>
+                
+                {activeSuggestion.original && (
+                  <div className="mb-6">
+                    <h5 className="text-sm font-medium text-foreground/70 mb-2">Original Content</h5>
+                    <div className="bg-muted/50 rounded p-4">
+                      <ResumeEditor 
+                        content={activeSuggestion.original} 
+                        editable={false}
+                      />
+                    </div>
+                  </div>
+                )}
+                
+                <div>
+                  <h5 className="text-sm font-medium text-primary mb-2">Suggested Change</h5>
+                  <div className="bg-primary/5 rounded p-4">
+                    <ResumeEditor 
+                      content={activeSuggestion.suggestion} 
+                      editable={false}
+                      showActions={!activeSuggestion.accepted}
+                      onAccept={() => onAcceptSuggestion(activeSuggestion.id)}
+                      onReject={() => setSelectedSuggestion(null)}
+                    />
                   </div>
                 </div>
+                
+                {activeSuggestion.accepted && (
+                  <Button 
+                    size="sm" 
+                    variant="outline"
+                    className="mt-4"
+                    onClick={() => onRejectSuggestion(activeSuggestion.id)}
+                  >
+                    Undo Application
+                  </Button>
+                )}
               </div>
-            ))}
+            ) : (
+              <div className="flex items-center justify-center h-full text-center p-6">
+                <div className="max-w-xs">
+                  <h4 className="text-lg font-medium mb-2">Select a suggestion</h4>
+                  <p className="text-foreground/70">
+                    Click on a suggestion from the left panel to preview and apply it to your resume
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
-        </ScrollArea>
+        </div>
         
         <Separator />
         
