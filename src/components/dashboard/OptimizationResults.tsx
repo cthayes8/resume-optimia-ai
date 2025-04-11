@@ -10,7 +10,6 @@ import {
   TooltipContent,
 } from "@/components/ui/tooltip";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { getMissingKeywords, analyzeKeywords } from "@/utils/keywordAnalysis";
 import { Badge } from "@/components/ui/badge";
 
 interface OptimizationResultsProps {
@@ -39,29 +38,38 @@ export default function OptimizationResults({
   onDownload,
   onReoptimize,
 }: OptimizationResultsProps) {
-  const [keywordAnalysis, setKeywordAnalysis] = useState<ReturnType<typeof analyzeKeywords>>([]);
+  const [keywordAnalysis, setKeywordAnalysis] = useState([]);
   const [missingKeywords, setMissingKeywords] = useState<string[]>([]);
 
   useEffect(() => {
-    // Analyze keywords whenever job description or resume content changes
-    console.log('Analyzing keywords with:', {
-      jobDescriptionLength: jobDescription?.length || 0,
-      resumeContentLength: resumeContent?.length || 0
-    });
+    const fetchKeywordAnalysis = async () => {
+      if (!jobDescription || !resumeContent) {
+        console.log('Missing required content for keyword analysis');
+        return;
+      }
 
-    if (!jobDescription || !resumeContent) {
-      console.log('Missing required content for keyword analysis');
-      return;
-    }
+      try {
+        const response = await fetch('/.netlify/functions/analyze-keywords', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ jobDescription, resumeContent }),
+        });
 
-    const analysis = analyzeKeywords(jobDescription, resumeContent);
-    console.log('Keyword analysis results:', analysis);
-    
-    const missing = getMissingKeywords(jobDescription, resumeContent);
-    console.log('Missing keywords:', missing);
-    
-    setKeywordAnalysis(analysis);
-    setMissingKeywords(missing);
+        if (!response.ok) {
+          throw new Error('Failed to fetch keyword analysis');
+        }
+
+        const data = await response.json();
+        console.log('Keyword analysis results:', data);
+        setKeywordAnalysis(data.keywords);
+      } catch (error) {
+        console.error('Error fetching keyword analysis:', error);
+      }
+    };
+
+    fetchKeywordAnalysis();
   }, [jobDescription, resumeContent]);
 
   const scoreColor = useMemo(() => {
@@ -102,36 +110,23 @@ export default function OptimizationResults({
             </div>
           </div>
 
-          {missingKeywords.length > 0 && (
-            <div>
-              <h3 className="text-lg font-semibold mb-2">Missing Keywords</h3>
-              <p className="text-sm text-muted-foreground mb-3">
-                Including these keywords can significantly improve your ATS score
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {missingKeywords.map((keyword) => {
-                  const analysis = keywordAnalysis.find(k => k.keyword === keyword);
-                  return (
-                    <Tooltip key={keyword}>
-                      <TooltipTrigger>
-                        <Badge
-                          variant={analysis?.importance === 'required' ? 'destructive' : 'secondary'}
-                          className="px-2 py-1 text-sm"
-                        >
-                          {keyword}
-                        </Badge>
-                      </TooltipTrigger>
-                      {analysis?.context && (
-                        <TooltipContent>
-                          <p className="max-w-xs text-xs">{analysis.context}</p>
-                        </TooltipContent>
-                      )}
-                    </Tooltip>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+          {keywordAnalysis.map((analysis) => (
+            <Tooltip key={analysis.keyword}>
+              <TooltipTrigger>
+                <Badge
+                  variant={analysis.importance === 'required' ? 'destructive' : 'secondary'}
+                  className="px-2 py-1 text-sm"
+                >
+                  {analysis.keyword}
+                </Badge>
+              </TooltipTrigger>
+              {analysis.context && (
+                <TooltipContent>
+                  <p className="max-w-xs text-xs">{analysis.context}</p>
+                </TooltipContent>
+              )}
+            </Tooltip>
+          ))}
         </div>
 
         <div className="grid grid-cols-2 gap-4 p-4 bg-muted/30 rounded-lg">

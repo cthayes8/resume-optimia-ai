@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Loader2, Wand2 } from 'lucide-react';
-import { ResumeEditor } from '@/components/editor/ResumeEditor';
+import ResumeEditor from '@/components/editor/ResumeEditor';
 import { AISuggestions } from '@/components/suggestions/AISuggestions';
 
 type SuggestionType = 'improvement' | 'addition' | 'removal';
@@ -87,6 +87,7 @@ export default function OptimizePage() {
               <ResumeEditor
                 content={content}
                 onChange={handleContentChange}
+                optimizationId={-1}
               />
             </CardContent>
           </Card>

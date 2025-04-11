@@ -2,7 +2,7 @@ import { AiSuggestionRule } from '@tiptap-pro/extension-ai-suggestion';
 
 // Configuration for the AI suggestion system
 export const aiConfig = {
-  baseUrl: '/v1/ai',
+  baseUrl: 'https://api.tiptap.dev/v1/ai',
   loadOnStart: true,
   reloadOnUpdate: false,
   debounceTimeout: 200,

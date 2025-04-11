@@ -5,6 +5,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-d
 import { Helmet } from "react-helmet";
 import { HelmetProvider } from "react-helmet-async";
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import SignIn from '@/pages/auth/sign-in';
 import AuthCallback from '@/pages/auth/callback';
 import SignUp from '@/pages/auth/sign-up';
@@ -46,66 +47,68 @@ const App = () => {
     <AuthProvider>
       <HelmetProvider>
         <QueryClientProvider client={queryClient}>
-          <Toaster />
-          <Sonner />
-          <Helmet titleTemplate="%s | Resume ATS Optimizer" defaultTitle="Resume ATS Optimizer" />
-          <Router>
-            <Routes>
-              {/* Public routes */}
-              <Route path="/" element={<Index />} />
-              <Route path="/blog" element={<Blog />} />
+          <TooltipProvider>
+            <Toaster />
+            <Sonner />
+            <Helmet titleTemplate="%s | Resume ATS Optimizer" defaultTitle="Resume ATS Optimizer" />
+            <Router>
+              <Routes>
+                {/* Public routes */}
+                <Route path="/" element={<Index />} />
+                <Route path="/blog" element={<Blog />} />
 
-              {/* Auth routes */}
-              <Route path="/auth/sign-in" element={<SignIn />} />
-              <Route path="/auth/sign-up" element={<SignUp />} />
-              <Route path="/auth/callback" element={<AuthCallback />} />
+                {/* Auth routes */}
+                <Route path="/auth/sign-in" element={<SignIn />} />
+                <Route path="/auth/sign-up" element={<SignUp />} />
+                <Route path="/auth/callback" element={<AuthCallback />} />
 
-              {/* Protected routes */}
-              <Route
-                path="/dashboard"
-                element={
-                  <ProtectedRoute>
-                    <Dashboard />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/optimize"
-                element={
-                  <ProtectedRoute>
-                    <Optimize />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/optimize/results"
-                element={
-                  <ProtectedRoute>
-                    <Results />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/history"
-                element={
-                  <ProtectedRoute>
-                    <History />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/settings"
-                element={
-                  <ProtectedRoute>
-                    <Settings />
-                  </ProtectedRoute>
-                }
-              />
+                {/* Protected routes */}
+                <Route
+                  path="/dashboard"
+                  element={
+                    <ProtectedRoute>
+                      <Dashboard />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/optimize"
+                  element={
+                    <ProtectedRoute>
+                      <Optimize />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/optimize/results"
+                  element={
+                    <ProtectedRoute>
+                      <Results />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/history"
+                  element={
+                    <ProtectedRoute>
+                      <History />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/settings"
+                  element={
+                    <ProtectedRoute>
+                      <Settings />
+                    </ProtectedRoute>
+                  }
+                />
 
-              {/* Catch-all route */}
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </Router>
+                {/* Catch-all route */}
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </Router>
+          </TooltipProvider>
         </QueryClientProvider>
       </HelmetProvider>
     </AuthProvider>

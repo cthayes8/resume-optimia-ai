@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react';
 import { Editor } from '@tiptap/core';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -10,24 +9,12 @@ interface AISuggestionsProps {
 }
 
 export function AISuggestions({ editor }: AISuggestionsProps) {
-  const [selectedSuggestion, setSelectedSuggestion] = useState<any>(null);
+  if (!editor?.extensionStorage?.aiSuggestion) {
+    return null;
+  }
+
   const storage = editor.extensionStorage.aiSuggestion;
-
-  useEffect(() => {
-    const handleSelectionUpdate = () => {
-      const selected = storage.getSelectedSuggestion();
-      setSelectedSuggestion(selected);
-    };
-
-    editor.on('selectionUpdate', handleSelectionUpdate);
-    return () => {
-      editor.off('selectionUpdate', handleSelectionUpdate);
-    };
-  }, [editor, storage]);
-
-  if (!storage) return null;
-
-  const suggestions = storage.getSuggestions();
+  const suggestions = storage.getSuggestions() || [];
   const isLoading = storage.isLoading;
   const error = storage.error;
 
@@ -71,17 +58,13 @@ export function AISuggestions({ editor }: AISuggestionsProps) {
       <CardContent>
         <ScrollArea className="h-[400px] pr-4">
           {suggestions.map((suggestion) => {
-            const isSelected = selectedSuggestion?.id === suggestion.id;
             const rule = suggestion.rule;
-
             return (
               <div
                 key={suggestion.id}
-                className={`mb-4 p-4 rounded-lg border transition-colors ${
-                  isSelected ? 'bg-secondary' : ''
-                }`}
+                className="mb-4 p-4 rounded-lg border"
                 style={{
-                  borderColor: isSelected ? rule.color : undefined,
+                  borderColor: rule.color,
                 }}
               >
                 <div className="flex items-start justify-between gap-2">
@@ -93,7 +76,7 @@ export function AISuggestions({ editor }: AISuggestionsProps) {
                       Original: <span className="font-mono">{suggestion.deleteText}</span>
                     </p>
                     <p className="text-sm text-foreground mt-1">
-                      Suggestion: <span className="font-mono">{suggestion.replacementOptions[0].addText}</span>
+                      Suggestion: <span className="font-mono">{suggestion.replacementOptions[0]?.addText}</span>
                     </p>
                   </div>
                   <div className="flex gap-1">
@@ -112,7 +95,7 @@ export function AISuggestions({ editor }: AISuggestionsProps) {
                       onClick={() =>
                         editor.commands.applyAiSuggestion({
                           suggestionId: suggestion.id,
-                          replacementOptionId: suggestion.replacementOptions[0].id,
+                          replacementOptionId: suggestion.replacementOptions[0]?.id,
                         })
                       }
                     >

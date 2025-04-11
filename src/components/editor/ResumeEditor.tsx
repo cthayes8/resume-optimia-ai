@@ -31,6 +31,7 @@ import './ai-suggestion.css';
 import { AISuggestions } from '@/components/suggestions/AISuggestions';
 import { supabase } from '@/lib/supabase';
 import { createResumeAIRules, aiConfig } from '@/config/aiPrompts';
+import { KeywordAnalysis } from '@/components/keywords/KeywordAnalysis';
 
 interface ResumeEditorProps {
   content: string;
@@ -192,14 +193,6 @@ export default function ResumeEditor({
                   <Italic className="h-4 w-4" />
                 </Toggle>
 
-                <Toggle
-                  pressed={editor.isActive('underline')}
-                  onPressedChange={() => editor.chain().focus().toggleUnderline().run()}
-                  aria-label="Toggle underline"
-                >
-                  <UnderlineIcon className="h-4 w-4" />
-                </Toggle>
-
                 <div className="h-6 w-px bg-border" />
 
                 <div className="flex gap-2">
@@ -252,21 +245,20 @@ export default function ResumeEditor({
                   </Button>
                 </div>
               </div>
-              <div 
-                ref={contentRef}
-                className="p-8 min-h-[1056px]" // 11 inches at 96 DPI
-                style={{
-                  width: '816px', // 8.5 inches at 96 DPI
-                  margin: '0 auto',
-                }}
-              >
+              <div ref={contentRef} className="p-4">
                 <EditorContent editor={editor} />
               </div>
             </div>
           </div>
           
-          <div className="w-[400px] sticky top-[80px] self-start">
+          <div className="w-[400px] sticky top-[80px] self-start space-y-4">
             {editor && <AISuggestions editor={editor} />}
+            {jobDescription && editor && (
+              <KeywordAnalysis 
+                jobDescription={jobDescription} 
+                resumeContent={editor.getHTML()} 
+              />
+            )}
           </div>
         </div>
       </div>

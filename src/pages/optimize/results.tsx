@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, ArrowLeft } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import ResumeEditor from "@/components/editor/ResumeEditor";
+import { KeywordAnalysis } from '@/components/keywords/KeywordAnalysis';
 
 interface OptimizationResultsProps {
   resumeContent: string;
@@ -19,6 +20,8 @@ interface OptimizationResultsProps {
   onSuggestionContentChange: (id: string, content: string) => void;
   onDownload: () => void;
   onReoptimize: () => void;
+  jobDescription: string;
+  optimizationSessionId: string;
 }
 
 export default function OptimizationResults({ 
@@ -32,7 +35,9 @@ export default function OptimizationResults({
   onRejectSuggestion,
   onSuggestionContentChange,
   onDownload,
-  onReoptimize
+  onReoptimize,
+  jobDescription,
+  optimizationSessionId
 }: OptimizationResultsProps) {
   return (
     <div className="container mx-auto p-4">
@@ -54,21 +59,6 @@ export default function OptimizationResults({
           </CardHeader>
           <CardContent>
             <div className="text-4xl font-bold mb-4">{score}%</div>
-            <div className="space-y-4">
-              <div>
-                <h3 className="font-medium mb-2">Missing Keywords</h3>
-                <div className="flex flex-wrap gap-2">
-                  {missingKeywords.map((keyword, index) => (
-                    <span
-                      key={index}
-                      className="bg-destructive/10 text-destructive px-2 py-1 rounded-md text-sm"
-                    >
-                      {keyword}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </div>
           </CardContent>
         </Card>
 
@@ -86,6 +76,7 @@ export default function OptimizationResults({
                 <ResumeEditor
                   content={resumeContent}
                   onChange={onResumeContentChange}
+                  optimizationId={Number(optimizationSessionId)}
                 />
               </CardContent>
             </Card>
@@ -183,6 +174,9 @@ export default function OptimizationResults({
             </Card>
           </div>
         </div>
+
+        {/* Keyword Analysis Section */}
+        <KeywordAnalysis jobDescription={jobDescription} resumeContent={resumeContent} />
 
         {/* Action Buttons */}
         <div className="flex justify-end gap-4 mt-6">
