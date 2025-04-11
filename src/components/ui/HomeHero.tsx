@@ -1,4 +1,3 @@
-
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, BarChart, CheckCircle, Clock } from "lucide-react";
@@ -24,10 +23,9 @@ export default function HomeHero() {
         </p>
         
         <div className="mt-10 flex flex-col sm:flex-row gap-4">
-          <Link to="/auth?signup=true">
-            <Button className="text-md px-8 py-6 rounded-full">
+          <Link to="/auth/sign-up">
+            <Button size="lg" className="rounded-full">
               Get Started
-              <ArrowRight className="ml-2 h-5 w-5" />
             </Button>
           </Link>
           <Link to="/#how-it-works">

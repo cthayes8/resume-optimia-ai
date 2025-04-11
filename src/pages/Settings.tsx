@@ -1,9 +1,10 @@
-
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Helmet } from "react-helmet";
 import { toast } from "sonner";
 import { UserCog, Lock, CreditCard, Bell, LogOut } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase, signOut } from "@/lib/supabase";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,19 +17,12 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 export default function Settings() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   
-  // User data - in a real app, this would come from context or API
-  const [user, setUser] = useState({
-    name: "John Doe",
-    email: "john@example.com",
-    profilePicture: "",
-    plan: "free",
-  });
-
   // Form states
   const [profileForm, setProfileForm] = useState({
-    name: user.name,
-    email: user.email,
+    name: user?.user_metadata?.full_name || '',
+    email: user?.email || '',
   });
 
   const [passwordForm, setPasswordForm] = useState({
@@ -44,22 +38,34 @@ export default function Settings() {
     marketing: false,
   });
 
-  // Handle profile update
-  const handleProfileUpdate = (e: React.FormEvent) => {
-    e.preventDefault();
-    // Simulate API call
-    setTimeout(() => {
-      setUser({
-        ...user,
-        name: profileForm.name,
-        email: profileForm.email,
+  useEffect(() => {
+    if (user) {
+      setProfileForm({
+        name: user.user_metadata?.full_name || '',
+        email: user.email || '',
       });
+    }
+  }, [user]);
+
+  // Handle profile update
+  const handleProfileUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const { error } = await supabase.auth.updateUser({
+        email: profileForm.email,
+        data: { full_name: profileForm.name }
+      });
+
+      if (error) throw error;
       toast.success("Profile updated successfully");
-    }, 500);
+    } catch (error) {
+      console.error('Error updating profile:', error);
+      toast.error("Failed to update profile");
+    }
   };
 
   // Handle password update
-  const handlePasswordUpdate = (e: React.FormEvent) => {
+  const handlePasswordUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (passwordForm.newPassword !== passwordForm.confirmPassword) {
@@ -72,15 +78,23 @@ export default function Settings() {
       return;
     }
     
-    // Simulate API call
-    setTimeout(() => {
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: passwordForm.newPassword
+      });
+
+      if (error) throw error;
+
       setPasswordForm({
         currentPassword: "",
         newPassword: "",
         confirmPassword: "",
       });
       toast.success("Password updated successfully");
-    }, 500);
+    } catch (error) {
+      console.error('Error updating password:', error);
+      toast.error("Failed to update password");
+    }
   };
 
   // Handle notification toggle
@@ -94,16 +108,15 @@ export default function Settings() {
   };
 
   // Handle logout
-  const handleLogout = () => {
-    // Clear any stored authentication data
-    localStorage.removeItem("user");
-    localStorage.removeItem("token");
-    
-    // Show toast notification
-    toast.success("Successfully signed out");
-    
-    // Redirect to home page
-    navigate("/");
+  const handleLogout = async () => {
+    try {
+      await signOut();
+      toast.success("Successfully signed out");
+      navigate("/auth/sign-in");
+    } catch (error) {
+      console.error('Error signing out:', error);
+      toast.error("Failed to sign out");
+    }
   };
 
   return (
@@ -154,12 +167,11 @@ export default function Settings() {
                   <div className="flex flex-col md:flex-row gap-6">
                     <div className="flex flex-col items-center gap-4">
                       <Avatar className="h-24 w-24">
-                        <AvatarImage src={user.profilePicture} alt={user.name} />
-                        <AvatarFallback className="text-lg">{user.name.split(' ').map(n => n[0]).join('')}</AvatarFallback>
+                        <AvatarImage src={user?.user_metadata?.avatar_url} alt={profileForm.name} />
+                        <AvatarFallback className="text-lg">
+                          {profileForm.name.split(' ').map(n => n[0]).join('')}
+                        </AvatarFallback>
                       </Avatar>
-                      <Button variant="outline" size="sm">
-                        Change Photo
-                      </Button>
                     </div>
                     
                     <div className="flex-1 space-y-4">
@@ -277,29 +289,29 @@ export default function Settings() {
                       <h3 className="text-lg font-medium">Current Plan</h3>
                       <div className="flex items-center mt-1">
                         <span className="text-muted-foreground mr-2">
-                          {user.plan === "free" ? "Free Plan" : user.plan === "basic" ? "Basic Plan" : "Pro Plan"}
+                          {user?.user_metadata?.plan === "free" ? "Free Plan" : user?.user_metadata?.plan === "basic" ? "Basic Plan" : "Pro Plan"}
                         </span>
-                        <Badge variant={user.plan === "free" ? "outline" : user.plan === "basic" ? "secondary" : "success"}>
-                          {user.plan === "free" ? "Free" : user.plan === "basic" ? "Basic" : "Pro"}
+                        <Badge variant={user?.user_metadata?.plan === "free" ? "outline" : user?.user_metadata?.plan === "basic" ? "secondary" : "success"}>
+                          {user?.user_metadata?.plan === "free" ? "Free" : user?.user_metadata?.plan === "basic" ? "Basic" : "Pro"}
                         </Badge>
                       </div>
                     </div>
                     
-                    {user.plan === "free" ? (
+                    {user?.user_metadata?.plan === "free" ? (
                       <Button>Upgrade Now</Button>
                     ) : (
                       <Button variant="outline">Manage Plan</Button>
                     )}
                   </div>
                   
-                  {user.plan !== "free" && (
+                  {user?.user_metadata?.plan !== "free" && (
                     <div className="text-sm text-muted-foreground">
                       <p>Your next billing date is on <span className="font-medium">May 15, 2025</span></p>
                     </div>
                   )}
                 </div>
                 
-                {user.plan !== "free" && (
+                {user?.user_metadata?.plan !== "free" && (
                   <>
                     <div className="space-y-4">
                       <h3 className="text-lg font-medium">Payment Method</h3>
@@ -324,11 +336,11 @@ export default function Settings() {
                           <div>
                             <p className="font-medium">April 15, 2025</p>
                             <p className="text-sm text-muted-foreground">
-                              {user.plan === "basic" ? "Basic Plan - Monthly" : "Pro Plan - Monthly"}
+                              {user?.user_metadata?.plan === "basic" ? "Basic Plan - Monthly" : "Pro Plan - Monthly"}
                             </p>
                           </div>
                           <div className="text-right">
-                            <p className="font-medium">{user.plan === "basic" ? "$19.99" : "$49.99"}</p>
+                            <p className="font-medium">{user?.user_metadata?.plan === "basic" ? "$19.99" : "$49.99"}</p>
                             <Button variant="ghost" size="sm" className="h-8 px-2">Receipt</Button>
                           </div>
                         </div>
@@ -336,11 +348,11 @@ export default function Settings() {
                           <div>
                             <p className="font-medium">March 15, 2025</p>
                             <p className="text-sm text-muted-foreground">
-                              {user.plan === "basic" ? "Basic Plan - Monthly" : "Pro Plan - Monthly"}
+                              {user?.user_metadata?.plan === "basic" ? "Basic Plan - Monthly" : "Pro Plan - Monthly"}
                             </p>
                           </div>
                           <div className="text-right">
-                            <p className="font-medium">{user.plan === "basic" ? "$19.99" : "$49.99"}</p>
+                            <p className="font-medium">{user?.user_metadata?.plan === "basic" ? "$19.99" : "$49.99"}</p>
                             <Button variant="ghost" size="sm" className="h-8 px-2">Receipt</Button>
                           </div>
                         </div>

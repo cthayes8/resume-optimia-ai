@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -150,7 +149,7 @@ export default function PricingPlans() {
               </ul>
 
               <div className="mt-8">
-                <Link to="/auth?signup=true">
+                <Link to="/auth/sign-up">
                   <Button
                     className={`w-full rounded-full ${
                       plan.popular

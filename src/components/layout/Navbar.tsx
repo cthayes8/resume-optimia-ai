@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -46,12 +45,12 @@ export function Navbar() {
           <Link to="/#pricing" className="text-foreground/70 hover:text-foreground transition-colors">
             Pricing
           </Link>
-          <Link to="/auth" className="ml-4">
+          <Link to="/auth/sign-in" className="ml-4">
             <Button variant="outline" className="rounded-full">
               Sign In
             </Button>
           </Link>
-          <Link to="/auth?signup=true">
+          <Link to="/auth/sign-up">
             <Button className="rounded-full">
               Get Started
             </Button>
@@ -94,7 +93,7 @@ export function Navbar() {
               Pricing
             </Link>
             <Link 
-              to="/auth" 
+              to="/auth/sign-in" 
               className="p-2"
               onClick={() => setIsMenuOpen(false)}
             >
@@ -103,7 +102,7 @@ export function Navbar() {
               </Button>
             </Link>
             <Link 
-              to="/auth?signup=true" 
+              to="/auth/sign-up" 
               className="p-2"
               onClick={() => setIsMenuOpen(false)}
             >

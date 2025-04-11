@@ -1,12 +1,13 @@
-
 import { useState } from "react";
 import { FileUp, File, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/components/ui/use-toast";
+import { Input } from "@/components/ui/input";
 
-export default function ResumeUpload({ onUploadComplete }: { onUploadComplete?: (file: File) => void }) {
+export default function ResumeUpload({ onUploadComplete }: { onUploadComplete?: (file: File, name: string) => void }) {
   const [file, setFile] = useState<File | null>(null);
+  const [resumeName, setResumeName] = useState("");
   const [dragActive, setDragActive] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -71,6 +72,15 @@ export default function ResumeUpload({ onUploadComplete }: { onUploadComplete?: 
   };
 
   const simulateUpload = () => {
+    if (!resumeName.trim()) {
+      toast({
+        title: "Name required",
+        description: "Please enter a name for your resume",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setUploading(true);
     setProgress(0);
 
@@ -81,12 +91,12 @@ export default function ResumeUpload({ onUploadComplete }: { onUploadComplete?: 
           setUploading(false);
           
           if (onUploadComplete && file) {
-            onUploadComplete(file);
+            onUploadComplete(file, resumeName.trim());
           }
           
           toast({
             title: "Upload complete",
-            description: `${file?.name} has been uploaded successfully.`,
+            description: `${resumeName} has been uploaded successfully.`,
           });
           
           return 100;
@@ -177,6 +187,15 @@ export default function ResumeUpload({ onUploadComplete }: { onUploadComplete?: 
             </Button>
           </div>
           
+          <div className="mt-4">
+            <Input
+              placeholder="Enter resume name"
+              value={resumeName}
+              onChange={(e) => setResumeName(e.target.value)}
+              disabled={uploading}
+            />
+          </div>
+          
           {uploading && (
             <Progress value={progress} className="mt-3 h-2" />
           )}
@@ -185,7 +204,7 @@ export default function ResumeUpload({ onUploadComplete }: { onUploadComplete?: 
             <Button 
               className="w-full mt-3" 
               onClick={simulateUpload}
-              disabled={uploading}
+              disabled={uploading || !resumeName.trim()}
             >
               Upload Resume
             </Button>

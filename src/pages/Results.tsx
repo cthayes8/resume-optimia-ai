@@ -1,12 +1,17 @@
 import { useState, useEffect } from "react";
 import { Helmet } from "react-helmet";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import OptimizationResults from "@/components/dashboard/OptimizationResults";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 import { ArrowLeft } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import mammoth from 'mammoth';
+import * as pdfjs from 'pdfjs-dist';
+
+// Set worker path for PDF.js
+pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
 
 // Mock data for demonstration
 const mockSuggestions = [
@@ -72,231 +77,237 @@ const scoringRubric = [
 
 export default function Results() {
   const [score, setScore] = useState(58);
-  const [missingKeywords, setMissingKeywords] = useState(mockMissingKeywords);
-  const [suggestions, setSuggestions] = useState(mockSuggestions);
+  const [resumeContent, setResumeContent] = useState("");
+  const [jobDescription, setJobDescription] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+  const [jobDescriptionId, setJobDescriptionId] = useState<string | null>(null);
   const [optimizationSessionId, setOptimizationSessionId] = useState<string | null>(null);
   const navigate = useNavigate();
   const { toast } = useToast();
+  
+  // Get parameters from URL
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const resumeId = searchParams.get('resumeId');
 
-  // Calculate a new score whenever suggestions are accepted/rejected
+  // Fetch resume content and job description when component mounts
   useEffect(() => {
-    const acceptedCount = suggestions.filter(s => s.accepted).length;
-    const newScore = Math.min(58 + Math.floor((acceptedCount / suggestions.length) * 40), 98);
-    setScore(newScore);
-  }, [suggestions]);
+    const fetchData = async () => {
+      if (!resumeId) {
+        toast({
+          title: "Error",
+          description: "No resume selected",
+          variant: "destructive",
+        });
+        navigate('/optimize');
+        return;
+      }
 
-  // Save optimization session when component mounts
-  useEffect(() => {
-    const saveOptimizationSession = async () => {
+      setIsLoading(true);
+      console.log('Starting data fetch for ID:', resumeId);
+
       try {
-        // Get user ID if authenticated
-        const { data: { user } } = await supabase.auth.getUser();
-        const userId = user?.id;
+        // First, get the file path and data from the resumes table
+        const { data: resume, error: resumeError } = await supabase
+          .from('resumes')
+          .select('file_path, data')
+          .eq('id', resumeId)
+          .limit(1)
+          .maybeSingle();
 
-        if (userId) {
-          // Create a new optimization session - adjust to match the schema
-          const { data, error } = await supabase
+        if (resumeError) {
+          console.error('Resume fetch error:', resumeError);
+          throw new Error(`Failed to fetch resume: ${resumeError.message}`);
+        }
+        
+        if (!resume) {
+          throw new Error('Resume not found');
+        }
+
+        if (!resume.file_path) {
+          throw new Error('No file path found for resume');
+        }
+
+        // Get the latest optimization session for this resume
+        const { data: session, error: sessionError } = await supabase
+          .from('optimization_sessions')
+          .select(`
+            job_description_id,
+            job_descriptions (
+              data
+            )
+          `)
+          .eq('resume_id', resumeId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        console.log('Found optimization session:', session);
+
+        // Try to get job description from various sources
+        let jobDescContent = '';
+
+        // 1. Try getting from the optimization session's job description
+        if (session?.job_descriptions?.data) {
+          const data = session.job_descriptions.data;
+          console.log('Found job description data:', data);
+          
+          if (typeof data === 'string' && data !== 'Default job description') {
+            jobDescContent = data;
+          } else if (typeof data === 'object' && data !== null) {
+            const objData = data as Record<string, unknown>;
+            if ('content' in objData && objData.content !== 'Default job description') {
+              jobDescContent = String(objData.content);
+            } else if ('job_description' in objData && objData.job_description !== 'Default job description') {
+              jobDescContent = String(objData.job_description);
+            }
+          }
+
+          if (jobDescContent) {
+            console.log('Using job description from optimization session:', jobDescContent.substring(0, 100) + '...');
+          }
+        }
+
+        // 2. If still no content, try resume data
+        if (!jobDescContent && resume.data && typeof resume.data === 'object' && 'job_description' in resume.data) {
+          const content = resume.data.job_description as string;
+          if (content && content !== 'Default job description') {
+            console.log('Using job description from resume data:', content.substring(0, 100) + '...');
+            jobDescContent = content;
+          }
+        }
+
+        // Set the job description if we found valid content
+        if (jobDescContent) {
+          setJobDescription(jobDescContent);
+        } else {
+          console.log('No valid job description found in any source');
+          // Don't set a default job description, leave it empty
+        }
+
+        // Extract the correct path from the full URL
+        const filePath = resume.file_path.includes('resume-files/') 
+          ? resume.file_path.split('resume-files/')[1]
+          : resume.file_path;
+
+        console.log('Downloading file with path:', filePath);
+        
+        // Download the actual file from storage
+        const { data: fileData, error: downloadError } = await supabase.storage
+          .from('resume-files')
+          .download(filePath);
+
+        if (downloadError) {
+          console.error('File download error:', downloadError);
+          throw new Error(`Failed to download file: ${downloadError.message}`);
+        }
+
+        if (!fileData) {
+          throw new Error('No file data received');
+        }
+
+        console.log('File downloaded, converting to HTML...');
+        
+        // Convert the file to HTML using mammoth
+        const arrayBuffer = await fileData.arrayBuffer();
+        const result = await mammoth.convertToHtml({ arrayBuffer });
+        setResumeContent(result.value);
+        setIsLoading(false);
+      } catch (error) {
+        console.error('Error fetching resume:', error);
+        toast({
+          title: "Error",
+          description: error instanceof Error ? error.message : "Failed to load resume content",
+          variant: "destructive",
+        });
+        setIsLoading(false);
+        navigate('/optimize');
+      }
+    };
+
+    fetchData();
+  }, [resumeId, navigate, toast]);
+
+  // Update the job description creation effect
+  useEffect(() => {
+    const createJobDescription = async () => {
+      if (!resumeId || !jobDescription || jobDescription === 'Default job description') return;
+
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user?.id) return;
+
+        // Create a job description entry
+        const { data: jobDesc, error: jobDescError } = await supabase
+          .from('job_descriptions')
+          .insert({
+            user_id: user.id,
+            data: {
+              content: jobDescription,
+            },
+            created_at: new Date().toISOString()
+          })
+          .select('id')
+          .single();
+
+        if (jobDescError) throw jobDescError;
+        
+        if (jobDesc) {
+          setJobDescriptionId(jobDesc.id);
+          
+          // Create an optimization session with the new job description
+          const { data: session, error: sessionError } = await supabase
             .from('optimization_sessions')
             .insert({
-              user_id: userId,
-              report: { 
-                score_before: 58,
-                score_after: score,
-                missing_keywords: missingKeywords
-              },
-              resume_id: userId, // Mocked value to satisfy not-null constraint
-              job_description_id: userId, // Mocked value to satisfy not-null constraint
+              user_id: user.id,
+              resume_id: resumeId,
+              job_description_id: jobDesc.id,
               created_at: new Date().toISOString()
             })
             .select('id')
             .single();
 
-          if (error) throw error;
-          
-          if (data) {
-            setOptimizationSessionId(data.id);
-            
-            // Save each suggestion with structure matching the schema
-            for (const suggestion of suggestions) {
-              await supabase
-                .from('optimizations')
-                .insert({
-                  user_id: userId,
-                  job_description: suggestion.original,
-                  optimized_resume: suggestion.suggestion,
-                  original_resume: suggestion.original || "<empty>",
-                  metrics: {
-                    type: suggestion.type,
-                    accepted: suggestion.accepted
-                  }
-                });
-            }
-            
-            console.log('Optimization session saved with ID:', data.id);
+          if (!sessionError && session) {
+            setOptimizationSessionId(session.id);
           }
         }
       } catch (error) {
-        console.error('Error saving optimization session:', error);
+        console.error('Error creating job description:', error);
       }
     };
 
-    saveOptimizationSession();
-  }, []);
+    createJobDescription();
+  }, [resumeId, jobDescription]);
 
-  // Update the optimization session in Supabase when score changes
+  // Remove the separate optimization session effect since we create it with the job description
   useEffect(() => {
-    const updateOptimizationScore = async () => {
-      if (optimizationSessionId) {
-        try {
-          const { error } = await supabase
-            .from('optimization_sessions')
-            .update({ 
-              report: { score_after: score },
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', optimizationSessionId);
+    const updateOptimizationSession = async () => {
+      if (!optimizationSessionId) return;
 
-          if (error) throw error;
-        } catch (error) {
-          console.error('Error updating optimization score:', error);
-        }
+      try {
+        await supabase
+          .from('optimization_sessions')
+          .update({
+            report: { 
+              score_before: 58,
+              score_after: score,
+            }
+          })
+          .eq('id', optimizationSessionId);
+      } catch (error) {
+        console.error('Error updating optimization session:', error);
       }
     };
 
-    updateOptimizationScore();
-  }, [score, optimizationSessionId]);
+    updateOptimizationSession();
+  }, [optimizationSessionId, score]);
 
-  const handleAcceptSuggestion = async (id: string) => {
-    setSuggestions(prev => 
-      prev.map(s => s.id === id ? { ...s, accepted: true } : s)
-    );
-    
-    // Update the suggestion in Supabase
-    if (optimizationSessionId) {
-      try {
-        const suggestion = suggestions.find(s => s.id === id);
-        if (suggestion) {
-          const { error } = await supabase
-            .from('optimizations')
-            .update({ 
-              metrics: { 
-                type: suggestion.type, 
-                accepted: true 
-              } 
-            })
-            .eq('id', parseInt(id)); // Convert string to number
-
-          if (error) throw error;
-        }
-      } catch (error) {
-        console.error('Error updating suggestion:', error);
-      }
-    }
-    
-    toast({
-      title: "Suggestion applied",
-      description: "The suggestion has been applied to your resume",
-    });
-  };
-
-  const handleRejectSuggestion = async (id: string) => {
-    setSuggestions(prev => 
-      prev.map(s => s.id === id ? { ...s, accepted: false } : s)
-    );
-    
-    // Update the suggestion in Supabase
-    if (optimizationSessionId) {
-      try {
-        const suggestion = suggestions.find(s => s.id === id);
-        if (suggestion) {
-          const { error } = await supabase
-            .from('optimizations')
-            .update({ 
-              metrics: { 
-                type: suggestion.type, 
-                accepted: false
-              } 
-            })
-            .eq('id', parseInt(id)); // Convert string to number
-
-          if (error) throw error;
-        }
-      } catch (error) {
-        console.error('Error updating suggestion:', error);
-      }
-    }
-  };
-
-  const handleSuggestionContentChange = (id: string, newContent: string) => {
-    setSuggestions(prev => 
-      prev.map(s => s.id === id ? { ...s, suggestion: newContent } : s)
-    );
-  };
-
-  const handleDownload = async () => {
-    toast({
-      title: "Resume downloaded",
-      description: "Your optimized resume has been downloaded",
-    });
-    
-    // Save the optimized resume to Supabase
-    if (optimizationSessionId) {
-      try {
-        // Combine all accepted suggestions into a single HTML document
-        const optimizedContent = suggestions
-          .filter(s => s.accepted)
-          .map(s => s.suggestion)
-          .join('');
-        
-        const { data: { user } } = await supabase.auth.getUser();
-        const userId = user?.id;
-        
-        if (userId) {
-          const { error } = await supabase
-            .from('optimized_resumes')
-            .insert({
-              session_id: optimizationSessionId,
-              data: { content: optimizedContent, score: score },
-            });
-
-          if (error) throw error;
-        }
-      } catch (error) {
-        console.error('Error saving optimized resume:', error);
-      }
-    }
-    
-    // In a real app, this would trigger the download of the optimized resume
-    console.log("Downloading optimized resume...");
+  const handleDownload = () => {
+    // Download logic
   };
 
   const handleReoptimize = () => {
-    toast({
-      title: "Reoptimizing resume",
-      description: "Generating new suggestions based on current content",
-    });
-    
-    // In a real app, this would trigger a reanalysis with the AI
-    setTimeout(() => {
-      const newSuggestions = [...suggestions];
-      // Add a new suggestion to demonstrate a reoptimization
-      newSuggestions.push({
-        id: "6",
-        original: "",
-        suggestion: "<p>Optimized database queries, reducing server load by <strong>60%</strong> and improving application response time by <em>3.2 seconds</em></p>",
-        accepted: false,
-        type: "add" as const,
-      });
-      setSuggestions(newSuggestions);
-      
-      // Remove 2 missing keywords to show improvement
-      setMissingKeywords(prev => prev.slice(2));
-      
-      toast({
-        title: "Reoptimization complete",
-        description: "New suggestions have been generated",
-      });
-    }, 2000);
+    // Reoptimize logic
   };
 
   return (
@@ -325,17 +336,30 @@ export default function Results() {
           </div>
         </div>
         
-        <OptimizationResults 
-          score={score}
-          missingKeywords={missingKeywords}
-          suggestions={suggestions}
-          scoringRubric={scoringRubric}
-          onAcceptSuggestion={handleAcceptSuggestion}
-          onRejectSuggestion={handleRejectSuggestion}
-          onSuggestionContentChange={handleSuggestionContentChange}
-          onDownload={handleDownload}
-          onReoptimize={handleReoptimize}
-        />
+        {isLoading ? (
+          <div className="flex items-center justify-center min-h-[400px]">
+            <div className="animate-pulse text-muted-foreground">
+              Loading resume content...
+            </div>
+          </div>
+        ) : resumeContent && jobDescription ? (
+          <OptimizationResults 
+            score={score}
+            jobDescription={jobDescription}
+            scoringRubric={scoringRubric}
+            onDownload={handleDownload}
+            onReoptimize={handleReoptimize}
+            resumeContent={resumeContent}
+            onResumeContentChange={setResumeContent}
+            optimizationId={Number(optimizationSessionId)}
+          />
+        ) : (
+          <div className="flex items-center justify-center min-h-[400px]">
+            <div className="text-muted-foreground">
+              {!resumeContent ? "No resume content available" : "No job description available"}
+            </div>
+          </div>
+        )}
       </DashboardLayout>
     </>
   );

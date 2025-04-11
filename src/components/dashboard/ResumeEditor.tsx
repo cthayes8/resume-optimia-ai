@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useEditor, EditorContent, BubbleMenu } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
@@ -7,6 +6,9 @@ import Highlight from '@tiptap/extension-highlight';
 import TextAlign from '@tiptap/extension-text-align';
 import Typography from '@tiptap/extension-typography';
 import Link from '@tiptap/extension-link';
+import BulletList from '@tiptap/extension-bullet-list';
+import OrderedList from '@tiptap/extension-ordered-list';
+import ListItem from '@tiptap/extension-list-item';
 import { Button } from "@/components/ui/button";
 import { CheckCircle, XCircle, Bold, Italic, Underline as UnderlineIcon, 
   AlignLeft, AlignCenter, AlignRight, Heading1, Heading2, List, ListOrdered, Link as LinkIcon, Highlighter } from "lucide-react";
@@ -38,7 +40,25 @@ export default function ResumeEditor({
 }: ResumeEditorProps) {
   const editor = useEditor({
     extensions: [
-      StarterKit,
+      StarterKit.configure({
+        heading: {
+          levels: [1, 2, 3]
+        },
+        bulletList: false,
+        orderedList: false,
+        listItem: false,
+      }),
+      BulletList.configure({
+        HTMLAttributes: {
+          class: 'list-disc ml-4',
+        },
+      }),
+      OrderedList.configure({
+        HTMLAttributes: {
+          class: 'list-decimal ml-4',
+        },
+      }),
+      ListItem,
       Underline,
       Highlight.configure({
         multicolor: true,
@@ -53,7 +73,7 @@ export default function ResumeEditor({
         linkOnPaste: true,
       }),
     ],
-    content,
+    content: content || '<p></p>',
     editable,
     onUpdate: ({ editor }) => {
       onChange?.(editor.getHTML());
@@ -62,10 +82,10 @@ export default function ResumeEditor({
 
   // Update content when it changes externally
   useEffect(() => {
-    if (editor && content) {
+    if (editor && content !== undefined) {
       // Only update if content is different to avoid cursor jumps
       if (editor.getHTML() !== content) {
-        editor.commands.setContent(content);
+        editor.commands.setContent(content || '<p></p>');
       }
     }
   }, [content, editor]);
@@ -308,6 +328,19 @@ export default function ResumeEditor({
         }
         .editor-content :global(ul), .editor-content :global(ol) {
           padding-left: 1.5em;
+          margin: 0.5em 0;
+        }
+        .editor-content :global(h1) {
+          font-size: 1.5em;
+          margin: 1em 0 0.5em;
+        }
+        .editor-content :global(h2) {
+          font-size: 1.25em;
+          margin: 1em 0 0.5em;
+        }
+        .editor-content :global(h3) {
+          font-size: 1.1em;
+          margin: 1em 0 0.5em;
         }
         .editor-content :global(.is-editor-empty:first-child::before) {
           color: #adb5bd;
