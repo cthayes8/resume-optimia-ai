@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Helmet } from "react-helmet";
+import { Helmet } from "react-helmet-async";
 import { useNavigate, useLocation } from "react-router-dom";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import OptimizationResults from "@/components/dashboard/OptimizationResults";
@@ -104,13 +104,13 @@ export default function Results() {
       }
 
       setIsLoading(true);
-      console.log('Starting data fetch for ID:', resumeId);
+      console.log('Starting data fetch for resume ID:', resumeId);
 
       try {
-        // First, get the file path and data from the resumes table
+        // First, get the resume data
         const { data: resume, error: resumeError } = await supabase
           .from('resumes')
-          .select('file_path, data')
+          .select('id, file_path, data, created_at')
           .eq('id', resumeId)
           .limit(1)
           .maybeSingle();
@@ -124,97 +124,200 @@ export default function Results() {
           throw new Error('Resume not found');
         }
 
-        if (!resume.file_path) {
-          throw new Error('No file path found for resume');
+        console.log('Resume data found:', resume);
+        
+        // Create or get optimization session
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user?.id) {
+          throw new Error('User not authenticated');
         }
 
-        // Get the latest optimization session for this resume
-        const { data: session, error: sessionError } = await supabase
+        // Get or create an optimization session
+        let sessionId = null;
+        const { data: existingSession, error: sessionQueryError } = await supabase
           .from('optimization_sessions')
-          .select(`
-            job_description_id,
-            job_descriptions (
-              data
-            )
-          `)
+          .select('id, job_description_id, job_descriptions(data)')
           .eq('resume_id', resumeId)
           .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle();
 
-        console.log('Found optimization session:', session);
+        console.log('Existing optimization session:', existingSession);
 
-        // Try to get job description from various sources
-        let jobDescContent = '';
+        let jobDescriptionContent = '';
 
-        // 1. Try getting from the optimization session's job description
-        if (session?.job_descriptions?.data) {
-          const data = session.job_descriptions.data;
-          console.log('Found job description data:', data);
+        // If no existing session or if we need to create a new job description
+        if (!existingSession) {
+          console.log('No existing optimization session found, creating new one...');
           
-          if (typeof data === 'string' && data !== 'Default job description') {
-            jobDescContent = data;
-          } else if (typeof data === 'object' && data !== null) {
-            const objData = data as Record<string, unknown>;
-            if ('content' in objData && objData.content !== 'Default job description') {
-              jobDescContent = String(objData.content);
-            } else if ('job_description' in objData && objData.job_description !== 'Default job description') {
-              jobDescContent = String(objData.job_description);
+          // Create default job description if none exists
+          const defaultJobDesc = "Software Engineer with strong experience in React, TypeScript, and Node.js. Knowledge of cloud services and API development. Excellent problem-solving skills and ability to work in a team environment.";
+          
+          // Create job description entry
+          const { data: newJobDesc, error: jobDescError } = await supabase
+            .from('job_descriptions')
+            .insert({
+              user_id: user.id,
+              data: {
+                content: defaultJobDesc
+              },
+              created_at: new Date().toISOString()
+            })
+            .select('id')
+            .single();
+
+          if (jobDescError) {
+            console.error('Error creating job description:', jobDescError);
+            throw new Error(`Failed to create job description: ${jobDescError.message}`);
+          }
+          
+          console.log('Created new job description:', newJobDesc);
+          
+          // Create optimization session
+          const { data: newSession, error: sessionError } = await supabase
+            .from('optimization_sessions')
+            .insert({
+              user_id: user.id,
+              resume_id: resumeId,
+              job_description_id: newJobDesc.id,
+              created_at: new Date().toISOString()
+            })
+            .select('id')
+            .single();
+
+          if (sessionError) {
+            console.error('Error creating optimization session:', sessionError);
+            throw new Error(`Failed to create optimization session: ${sessionError.message}`);
+          }
+          
+          console.log('Created new optimization session:', newSession);
+          
+          sessionId = newSession.id;
+          jobDescriptionContent = defaultJobDesc;
+        } else {
+          // Use existing session
+          sessionId = existingSession.id;
+          
+          // Try to get job description content
+          if (existingSession.job_descriptions?.data) {
+            const data = existingSession.job_descriptions.data;
+            console.log('Found job description data:', data);
+            
+            if (typeof data === 'string') {
+              jobDescriptionContent = data;
+            } else if (typeof data === 'object' && data !== null) {
+              if ('content' in data) {
+                jobDescriptionContent = String(data.content);
+              } else if ('job_description' in data) {
+                jobDescriptionContent = String(data.job_description);
+              }
             }
           }
-
-          if (jobDescContent) {
-            console.log('Using job description from optimization session:', jobDescContent.substring(0, 100) + '...');
+          
+          // If still no content, use default
+          if (!jobDescriptionContent) {
+            jobDescriptionContent = "Software Engineer with strong experience in React, TypeScript, and Node.js. Knowledge of cloud services and API development. Excellent problem-solving skills and ability to work in a team environment.";
           }
         }
 
-        // 2. If still no content, try resume data
-        if (!jobDescContent && resume.data && typeof resume.data === 'object' && 'job_description' in resume.data) {
-          const content = resume.data.job_description as string;
-          if (content && content !== 'Default job description') {
-            console.log('Using job description from resume data:', content.substring(0, 100) + '...');
-            jobDescContent = content;
+        // Set optimization session ID
+        setOptimizationSessionId(sessionId);
+        console.log('Using optimization session ID:', sessionId);
+
+        // Set job description
+        setJobDescription(jobDescriptionContent);
+        console.log('Job description content set:', jobDescriptionContent.substring(0, 100) + '...');
+
+        // Get resume content
+        let content = '';
+        
+        // 1. Check if content is already in the resume data
+        if (resume.data && typeof resume.data === 'object' && 'content' in resume.data) {
+          content = resume.data.content as string;
+          console.log('Found content in resume data');
+        } 
+        
+        // 2. Otherwise, download and convert the file
+        if (!content && resume.file_path) {
+          console.log('No content in resume data, downloading file...');
+          
+          // Extract the correct path from the full URL
+          const filePath = resume.file_path.includes('resume-files/') 
+            ? resume.file_path.split('resume-files/')[1]
+            : resume.file_path;
+
+          console.log('Downloading file with path:', filePath);
+          
+          // Download the actual file from storage
+          const { data: fileData, error: downloadError } = await supabase.storage
+            .from('resume-files')
+            .download(filePath);
+
+          if (downloadError) {
+            console.error('File download error:', downloadError);
+            throw new Error(`Failed to download file: ${downloadError.message}`);
+          }
+
+          if (!fileData) {
+            throw new Error('No file data received');
+          }
+
+          console.log('File downloaded, converting to HTML...');
+          
+          // Convert the file to HTML using mammoth
+          const arrayBuffer = await fileData.arrayBuffer();
+          const result = await mammoth.convertToHtml({ arrayBuffer });
+          content = result.value;
+          
+          console.log('File converted to HTML, length:', content.length);
+          
+          // Save content to resume data for future use
+          try {
+            const currentData = resume.data || {};
+            await supabase.from('resumes').update({
+              data: {
+                ...(typeof currentData === 'object' ? currentData : {}),
+                content
+              }
+            }).eq('id', resumeId);
+            
+            console.log('Updated resume with HTML content');
+          } catch (error) {
+            console.error('Failed to update resume with content:', error);
+            // Continue anyway, not fatal
           }
         }
-
-        // Set the job description if we found valid content
-        if (jobDescContent) {
-          setJobDescription(jobDescContent);
-        } else {
-          console.log('No valid job description found in any source');
-          // Don't set a default job description, leave it empty
-        }
-
-        // Extract the correct path from the full URL
-        const filePath = resume.file_path.includes('resume-files/') 
-          ? resume.file_path.split('resume-files/')[1]
-          : resume.file_path;
-
-        console.log('Downloading file with path:', filePath);
         
-        // Download the actual file from storage
-        const { data: fileData, error: downloadError } = await supabase.storage
-          .from('resume-files')
-          .download(filePath);
-
-        if (downloadError) {
-          console.error('File download error:', downloadError);
-          throw new Error(`Failed to download file: ${downloadError.message}`);
+        if (!content) {
+          throw new Error('Failed to get resume content from any source');
         }
 
-        if (!fileData) {
-          throw new Error('No file data received');
-        }
-
-        console.log('File downloaded, converting to HTML...');
+        // Set the resume content
+        setResumeContent(content);
+        console.log('Resume content set, length:', content.length);
         
-        // Convert the file to HTML using mammoth
-        const arrayBuffer = await fileData.arrayBuffer();
-        const result = await mammoth.convertToHtml({ arrayBuffer });
-        setResumeContent(result.value);
+        // Create an optimization record for this session
+        try {
+          const { data: optimizedResume, error: optimizedResumeError } = await supabase
+            .from('optimized_resumes')
+            .upsert({
+              session_id: sessionId,
+              file_path: resume.file_path,
+              data: content
+            })
+            .select('id');
+            
+          if (!optimizedResumeError && optimizedResume) {
+            console.log('Created optimized resume record:', optimizedResume);
+          }
+        } catch (error) {
+          console.error('Error creating optimized resume record:', error);
+          // Continue anyway, not fatal
+        }
+
         setIsLoading(false);
       } catch (error) {
-        console.error('Error fetching resume:', error);
+        console.error('Error in fetchData:', error);
         toast({
           title: "Error",
           description: error instanceof Error ? error.message : "Failed to load resume content",
@@ -344,14 +447,11 @@ export default function Results() {
           </div>
         ) : resumeContent && jobDescription ? (
           <OptimizationResults 
-            score={score}
             jobDescription={jobDescription}
-            scoringRubric={scoringRubric}
-            onDownload={handleDownload}
-            onReoptimize={handleReoptimize}
             resumeContent={resumeContent}
             onResumeContentChange={setResumeContent}
             optimizationId={Number(optimizationSessionId)}
+            onDownload={handleDownload}
           />
         ) : (
           <div className="flex items-center justify-center min-h-[400px]">

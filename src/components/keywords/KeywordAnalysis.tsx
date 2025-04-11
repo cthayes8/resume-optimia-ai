@@ -1,10 +1,8 @@
 import { useEffect, useState } from 'react';
-import { KeywordMatch } from '@/types/keywords';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Loader2 } from 'lucide-react';
-import { analyzeKeywords } from '@/utils/keywordAnalysis';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { KeywordMatch } from '@/types/keywords';
 
 interface KeywordAnalysisProps {
   jobDescription: string;
@@ -12,106 +10,115 @@ interface KeywordAnalysisProps {
 }
 
 export function KeywordAnalysis({ jobDescription, resumeContent }: KeywordAnalysisProps) {
-  const [keywords, setKeywords] = useState<KeywordMatch[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [keywordAnalysis, setKeywordAnalysis] = useState<KeywordMatch[]>([]);
+  const [score, setScore] = useState<number>(0);
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    async function analyzeKeywordsLocally() {
-      if (!jobDescription || !resumeContent) return;
-      
-      setLoading(true);
-      setError(null);
-      
-      try {
-        const data = analyzeKeywords(jobDescription, resumeContent);
-        setKeywords(data);
-      } catch (err) {
-        setError('Failed to analyze keywords');
-      } finally {
-        setLoading(false);
+    const fetchKeywordAnalysis = async () => {
+      if (!jobDescription || !resumeContent) {
+        console.log('Missing required content for keyword analysis');
+        return;
       }
-    }
 
-    analyzeKeywordsLocally();
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        const response = await fetch('http://localhost:3001/api/analyze-keywords', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ jobDescription, resumeContent }),
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to analyze keywords');
+        }
+
+        const result = await response.json();
+        setKeywordAnalysis(result.keywords);
+        setScore(result.score);
+      } catch (error) {
+        console.error('Error analyzing keywords:', error);
+        setError(error instanceof Error ? error.message : 'Failed to analyze keywords');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchKeywordAnalysis();
   }, [jobDescription, resumeContent]);
 
-  if (loading) {
+  const getMatchTypeColor = (matchType: string) => {
+    switch (matchType) {
+      case 'direct':
+        return 'bg-green-100 text-green-800';
+      case 'synonym':
+        return 'bg-blue-100 text-blue-800';
+      case 'semantic':
+        return 'bg-yellow-100 text-yellow-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  if (isLoading) {
     return (
-      <Card className="w-full">
-        <CardContent className="pt-6 text-center">
-          <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
-          <p className="mt-2 text-sm text-muted-foreground">Extracting keywords...</p>
-        </CardContent>
+      <Card>
+        <CardHeader>
+          <CardTitle>Analyzing Keywords...</CardTitle>
+          <CardDescription>Please wait while we analyze your resume</CardDescription>
+        </CardHeader>
       </Card>
     );
   }
 
   if (error) {
     return (
-      <Card className="w-full">
-        <CardContent className="pt-6">
-          <p className="text-sm text-destructive">{error}</p>
-        </CardContent>
+      <Card>
+        <CardHeader>
+          <CardTitle>Error</CardTitle>
+          <CardDescription className="text-red-500">{error}</CardDescription>
+        </CardHeader>
       </Card>
     );
   }
 
-  const getMatchTypeColor = (matchType: KeywordMatch['matchType']) => {
-    switch (matchType) {
-      case 'direct':
-        return 'bg-green-500 text-white';
-      case 'synonym':
-        return 'bg-blue-500 text-white';
-      case 'semantic':
-        return 'bg-yellow-500 text-white';
-      case 'none':
-        return 'bg-red-500 text-white';
-      default:
-        return 'bg-gray-500 text-white';
-    }
-  };
-
   return (
-    <Card className="w-full">
+    <Card>
       <CardHeader>
-        <CardTitle>Keywords</CardTitle>
-        <CardDescription>Analysis of important keywords from the job description</CardDescription>
+        <CardTitle>Keyword Analysis</CardTitle>
+        <CardDescription>
+          Match score: {score.toFixed(1)}%
+        </CardDescription>
       </CardHeader>
       <CardContent>
-        <ScrollArea className="h-[400px] pr-4">
-          {keywords.map((keyword) => (
-            <div
-              key={keyword.keyword}
-              className="mb-4 p-4 rounded-lg border"
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-2">
-                    <h4 className="font-medium">{keyword.keyword}</h4>
-                    <Badge className={getMatchTypeColor(keyword.matchType)}>
-                      {keyword.matchType}
-                    </Badge>
-                  </div>
-                  <p className="text-sm text-muted-foreground">{keyword.explanation}</p>
-                  {keyword.confidence > 0 && (
-                    <div className="mt-2">
-                      <div className="h-2 w-full bg-gray-200 rounded-full">
-                        <div
-                          className="h-2 bg-primary rounded-full"
-                          style={{ width: `${keyword.confidence * 100}%` }}
-                        />
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Match confidence: {Math.round(keyword.confidence * 100)}%
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
+        <div className="flex flex-wrap gap-2">
+          {keywordAnalysis.map((analysis) => (
+            <Tooltip key={analysis.keyword}>
+              <TooltipTrigger>
+                <Badge
+                  className={`${getMatchTypeColor(analysis.matchType)} cursor-help`}
+                  variant="secondary"
+                >
+                  {analysis.keyword}
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p className="max-w-xs text-sm">
+                  <span className="font-semibold">Match type:</span> {analysis.matchType}
+                  <br />
+                  <span className="font-semibold">Confidence:</span> {(analysis.confidence * 100).toFixed(1)}%
+                  <br />
+                  {analysis.explanation}
+                </p>
+              </TooltipContent>
+            </Tooltip>
           ))}
-        </ScrollArea>
+        </div>
       </CardContent>
     </Card>
   );

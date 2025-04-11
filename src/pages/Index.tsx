@@ -1,5 +1,4 @@
-
-import { Helmet } from "react-helmet";
+import { Helmet } from "react-helmet-async";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import Navbar from "@/components/layout/Navbar";
 import HomeHero from "@/components/ui/HomeHero";

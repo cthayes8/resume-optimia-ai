@@ -1,28 +1,90 @@
-import { Handler } from '@netlify/functions';
+// analyzeKeywords.ts — backend API logic
+
 import OpenAI from 'openai';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// Lightweight synonym map
+// Optional: enable GPT fallback to semantic matching
+const ENABLE_SEMANTIC = false;
+
 const keywordSynonyms: Record<string, string[]> = {
   javascript: ['js', 'ecmascript', 'node.js', 'nodejs'],
   python: ['py', 'python3'],
   react: ['reactjs', 'react.js'],
-  sql: ['mysql', 'postgres', 'oracle'],
+  vue: ['vuejs', 'vue.js'],
+  angular: ['angularjs', 'angular.js'],
   aws: ['amazon web services'],
+  azure: ['microsoft azure'],
+  sql: ['mysql', 'postgres', 'oracle'],
+  nosql: ['mongodb', 'dynamodb'],
+  ci: ['continuous integration'],
+  cd: ['continuous deployment'],
   agile: ['scrum', 'kanban'],
+  "bachelor's degree": ['bachelor', 'b.a.', 'b.s.', 'undergrad'],
+  "master's degree": ['m.a.', 'm.s.', 'mba'],
+  phd: ['ph.d.', 'doctorate']
 };
 
-function checkSynonymMatch(keyword: string, content: string): boolean {
-  const norm = content.toLowerCase();
-  if (norm.includes(keyword.toLowerCase())) return true;
-  const synonyms = keywordSynonyms[keyword.toLowerCase()] || [];
-  return synonyms.some(s => norm.includes(s));
+async function extractTopKeywords(jobDescription: string): Promise<{ keyword: string, importance: 'required' | 'preferred', context: string }[]> {
+  const prompt = `Extract 15 key skills, technologies, or qualifications from the job description. 
+
+For each, return:
+- keyword
+- importance: "required" or "preferred"
+- context: short snippet from JD
+
+Return in this JSON format:
+{
+  "keywords": [
+    { "keyword": "salesforce", "importance": "required", "context": "Experience with Salesforce is required" },
+    ...
+  ]
+}
+
+Job Description:
+${jobDescription}`;
+
+  const completion = await openai.chat.completions.create({
+    model: 'gpt-4o',
+    messages: [
+      { role: 'system', content: 'You are a resume keyword extraction assistant.' },
+      { role: 'user', content: prompt }
+    ],
+    response_format: 'json_object'
+  });
+
+  const response = JSON.parse(completion.choices[0].message.content);
+  return response.keywords || [];
+}
+
+function checkKeywordMatch(keyword: string, content: string): { found: boolean; matchType: 'direct' | 'synonym' | 'none'; confidence: number; explanation: string } {
+  const normContent = content.toLowerCase();
+  const normKeyword = keyword.toLowerCase();
+
+  if (normContent.includes(normKeyword)) {
+    return { found: true, matchType: 'direct', confidence: 1.0, explanation: 'Direct match found in resume.' };
+  }
+
+  const synonyms = keywordSynonyms[normKeyword] || [];
+  if (synonyms.some(s => normContent.includes(s.toLowerCase()))) {
+    return { found: true, matchType: 'synonym', confidence: 0.9, explanation: 'Matched via synonym.' };
+  }
+
+  return { found: false, matchType: 'none', confidence: 0.0, explanation: 'No match found.' };
 }
 
 async function checkSemanticMatch(keyword: string, resumeContent: string) {
-  const prompt = `Does the resume below satisfy this requirement: "${keyword}"?
-Return JSON: { matched: boolean, confidence: number, explanation: string }
+  const prompt = `Does the resume below satisfy this keyword requirement: "${keyword}"?
+
+Return:
+{
+  "matched": boolean,
+  "confidence": number,
+  "explanation": string
+}
 
 Resume:
 ${resumeContent}`;
@@ -30,82 +92,50 @@ ${resumeContent}`;
   const completion = await openai.chat.completions.create({
     model: 'gpt-4o',
     messages: [
-      { role: 'system', content: 'You analyze resumes for job relevance.' },
+      { role: 'system', content: 'You are a resume matching engine.' },
       { role: 'user', content: prompt }
     ],
-    response_format: 'json'
+    response_format: 'json_object'
   });
 
-  return JSON.parse(completion.choices[0].message.content || '{}');
+  return JSON.parse(completion.choices[0].message.content);
 }
 
-async function extractTopKeywords(jobDescription: string): Promise<string[]> {
-  const prompt = `Extract the 10 most important skills, tools, or qualifications from the job description. Return JSON: ["keyword1", "keyword2", ...]
-
-JD:
-${jobDescription}`;
-
-  const completion = await openai.chat.completions.create({
-    model: 'gpt-4o',
-    messages: [
-      { role: 'system', content: 'You extract key hiring criteria from job descriptions.' },
-      { role: 'user', content: prompt }
-    ],
-    response_format: 'json'
-  });
-
-  return JSON.parse(completion.choices[0].message.content || '[]');
-}
-
-export const handler: Handler = async (event) => {
-  if (event.httpMethod !== 'POST') return { statusCode: 405, body: 'Method Not Allowed' };
-
+export async function analyzeKeywords(jobDescription: string, resumeContent: string) {
   try {
-    const { jobDescription, resumeContent } = JSON.parse(event.body || '{}');
-    if (!jobDescription || !resumeContent) return { statusCode: 400, body: 'Missing input' };
+    const extracted = await extractTopKeywords(jobDescription);
 
-    const keywords = await extractTopKeywords(jobDescription);
-    const results = await Promise.all(
-      keywords.map(async keyword => {
-        let matchType = 'none';
-        let found = false;
-        let confidence = 0;
-        let explanation = '';
+    const keywordMatches = await Promise.all(
+      extracted.map(async ({ keyword, importance, context }) => {
+        let match = checkKeywordMatch(keyword, resumeContent);
 
-        if (resumeContent.toLowerCase().includes(keyword.toLowerCase())) {
-          matchType = 'direct';
-          found = true;
-          confidence = 1;
-          explanation = 'Direct keyword match found.';
-        } else if (checkSynonymMatch(keyword, resumeContent)) {
-          matchType = 'synonym';
-          found = true;
-          confidence = 0.9;
-          explanation = 'Synonym match found.';
-        } else {
+        if (!match.found && ENABLE_SEMANTIC) {
           const semantic = await checkSemanticMatch(keyword, resumeContent);
-          found = semantic.matched;
-          confidence = semantic.confidence;
-          explanation = semantic.explanation;
-          if (found) matchType = 'semantic';
+          match = {
+            found: semantic.matched,
+            matchType: semantic.matched ? 'semantic' : 'none',
+            confidence: semantic.confidence,
+            explanation: semantic.explanation
+          };
         }
 
-        return { keyword, found, matchType, confidence, explanation };
+        return {
+          keyword,
+          importance,
+          context,
+          ...match
+        };
       })
     );
 
-    const score = Math.round((results.filter(r => r.found).length / results.length) * 100);
+    const score = Math.round((keywordMatches.filter(k => k.found).length / keywordMatches.length) * 100);
 
     return {
-      statusCode: 200,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ keywords: results, score })
+      keywords: keywordMatches,
+      score
     };
   } catch (err) {
-    return {
-      statusCode: 500,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ error: (err as Error).message })
-    };
+    console.error('analyzeKeywords error:', err);
+    return { keywords: [], score: 0 };
   }
-}; 
+}

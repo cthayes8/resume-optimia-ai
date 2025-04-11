@@ -2,8 +2,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
-import { Helmet } from "react-helmet";
-import { HelmetProvider } from "react-helmet-async";
+import { HelmetProvider, Helmet } from "react-helmet-async";
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import SignIn from '@/pages/auth/sign-in';
@@ -50,7 +49,7 @@ const App = () => {
           <TooltipProvider>
             <Toaster />
             <Sonner />
-            <Helmet titleTemplate="%s | Resume ATS Optimizer" defaultTitle="Resume ATS Optimizer" />
+            <Helmet defaultTitle="Resume ATS Optimizer" titleTemplate="%s | Resume ATS Optimizer" />
             <Router>
               <Routes>
                 {/* Public routes */}

@@ -1,6 +1,5 @@
-
 import { useState } from "react";
-import { Helmet } from "react-helmet";
+import { Helmet } from "react-helmet-async";
 import { Link } from "react-router-dom";
 import { FileText, ExternalLink, Calendar, BarChart2, ArrowUpDown } from "lucide-react";
 import DashboardLayout from "@/components/layout/DashboardLayout";

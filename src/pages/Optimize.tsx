@@ -15,19 +15,79 @@ import { getUserResumes, uploadResume, deleteResume, updateResumeName, type Resu
 import { useAuth } from "@/contexts/AuthContext";
 import ResumeUpload from "@/components/dashboard/ResumeUpload";
 
+// Local storage keys for persisting state
+const STORAGE_KEY_PREFIX = 'resumeOptimia_';
+const RESUME_TYPE_KEY = `${STORAGE_KEY_PREFIX}selectedResumeType`;
+const RESUME_ID_KEY = `${STORAGE_KEY_PREFIX}selectedResumeId`;
+const JOB_DESC_KEY = `${STORAGE_KEY_PREFIX}jobDescription`;
+const JOB_URL_KEY = `${STORAGE_KEY_PREFIX}jobUrl`;
+
 export default function Optimize() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
-  const [selectedResumeType, setSelectedResumeType] = useState<"saved" | "new">("saved");
-  const [selectedResumeId, setSelectedResumeId] = useState<string>("");
-  const [jobDescription, setJobDescription] = useState("");
-  const [jobUrl, setJobUrl] = useState("");
+  
+  // Initialize state from localStorage or defaults
+  const [selectedResumeType, setSelectedResumeType] = useState<"saved" | "new">(() => {
+    const saved = localStorage.getItem(RESUME_TYPE_KEY);
+    return (saved as "saved" | "new") || "saved";
+  });
+  
+  const [selectedResumeId, setSelectedResumeId] = useState<string>(() => {
+    return localStorage.getItem(RESUME_ID_KEY) || "";
+  });
+  
+  const [jobDescription, setJobDescription] = useState(() => {
+    return localStorage.getItem(JOB_DESC_KEY) || "";
+  });
+  
+  const [jobUrl, setJobUrl] = useState(() => {
+    return localStorage.getItem(JOB_URL_KEY) || "";
+  });
+  
   const [isLoading, setIsLoading] = useState(false);
   const [resumes, setResumes] = useState<Resume[]>([]);
   const [isEditingName, setIsEditingName] = useState(false);
   const [editingResume, setEditingResume] = useState<Resume | null>(null);
   const [newResumeName, setNewResumeName] = useState("");
+
+  // Persist state to localStorage when it changes
+  useEffect(() => {
+    localStorage.setItem(RESUME_TYPE_KEY, selectedResumeType);
+  }, [selectedResumeType]);
+  
+  useEffect(() => {
+    localStorage.setItem(RESUME_ID_KEY, selectedResumeId);
+  }, [selectedResumeId]);
+  
+  useEffect(() => {
+    localStorage.setItem(JOB_DESC_KEY, jobDescription);
+  }, [jobDescription]);
+  
+  useEffect(() => {
+    localStorage.setItem(JOB_URL_KEY, jobUrl);
+  }, [jobUrl]);
+
+  // Custom state updaters that also update localStorage
+  const updateSelectedResumeType = (value: "saved" | "new") => {
+    setSelectedResumeType(value);
+    localStorage.setItem(RESUME_TYPE_KEY, value);
+  };
+  
+  const updateSelectedResumeId = (value: string) => {
+    setSelectedResumeId(value);
+    localStorage.setItem(RESUME_ID_KEY, value);
+  };
+  
+  const updateJobDescription = (value: string) => {
+    setJobDescription(value);
+    localStorage.setItem(JOB_DESC_KEY, value);
+  };
+  
+  const updateJobUrl = (value: string) => {
+    setJobUrl(value);
+    localStorage.setItem(JOB_URL_KEY, value);
+  };
 
   const loadResumes = useCallback(async () => {
     try {
@@ -35,6 +95,12 @@ export default function Optimize() {
       const userResumes = await getUserResumes(user!.id);
       console.log('Loaded resumes:', userResumes);
       setResumes(userResumes);
+      
+      // If we have a selectedResumeId from localStorage, validate it exists in the loaded resumes
+      if (selectedResumeId && !userResumes.some(r => r.id === selectedResumeId)) {
+        // If the resume no longer exists, clear the selection
+        updateSelectedResumeId("");
+      }
     } catch (error) {
       console.error('Error loading resumes:', error);
       toast({
@@ -43,7 +109,7 @@ export default function Optimize() {
         variant: "destructive",
       });
     }
-  }, [user, toast]);
+  }, [user, toast, selectedResumeId]);
 
   useEffect(() => {
     if (user?.id) {
@@ -53,7 +119,7 @@ export default function Optimize() {
 
   const handleResumeClick = useCallback((resumeId: string) => {
     console.log('Resume clicked:', resumeId);
-    setSelectedResumeId(resumeId);
+    updateSelectedResumeId(resumeId);
   }, []);
 
   const handleEditClick = useCallback((resume: Resume) => {
@@ -69,7 +135,7 @@ export default function Optimize() {
       await deleteResume(id, user.id);
       await loadResumes();
       if (selectedResumeId === id) {
-        setSelectedResumeId("");
+        updateSelectedResumeId("");
       }
       toast({
         title: "Resume deleted",
@@ -132,21 +198,18 @@ export default function Optimize() {
     ));
   }, [resumes, selectedResumeId, handleResumeClick, handleEditClick, handleDeleteResume]);
 
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file || !user) return;
+  const handleFileUpload = async (file: File, name: string) => {
+    if (!user) return;
 
     setIsLoading(true);
     try {
-      // Extract name from file, removing extension
-      const defaultName = file.name.replace(/\.[^/.]+$/, "");
-      await uploadResume(file, user.id, defaultName);
+      await uploadResume(file, user.id, name);
       await loadResumes();
       toast({
         title: "Resume uploaded",
         description: "Your resume has been successfully uploaded.",
       });
-      setSelectedResumeType("saved");
+      updateSelectedResumeType("saved");
     } catch (error) {
       toast({
         title: "Upload failed",
@@ -250,59 +313,40 @@ export default function Optimize() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-6xl mx-auto">
-          {/* Resume Selection Section */}
-          <Card className="h-fit">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg">Select Resume</CardTitle>
-              <CardDescription className="text-sm">
-                Choose from your saved resumes or upload a new one
-              </CardDescription>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Select Resume</CardTitle>
+              <CardDescription>Choose from your saved resumes or upload a new one</CardDescription>
             </CardHeader>
             <CardContent>
-              <RadioGroup
-                value={selectedResumeType}
-                onValueChange={(value) => setSelectedResumeType(value as "saved" | "new")}
-                className="space-y-2"
+              <RadioGroup 
+                defaultValue={selectedResumeType}
+                className="mb-4"
+                onValueChange={(value) => updateSelectedResumeType(value as "saved" | "new")}
               >
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-2 mb-2">
                   <RadioGroupItem value="saved" id="saved" />
                   <Label htmlFor="saved">Select a saved resume</Label>
                 </div>
                 {selectedResumeType === "saved" && (
-                  <div className="ml-6 space-y-2 max-h-[180px] overflow-y-auto">
+                  <div className="pl-6 space-y-2 my-2">
                     {renderResumeList}
+                    {resumes.length === 0 && (
+                      <p className="text-sm text-muted-foreground">
+                        No saved resumes found. Please upload a resume.
+                      </p>
+                    )}
                   </div>
                 )}
-
                 <div className="flex items-center space-x-2">
                   <RadioGroupItem value="new" id="new" />
                   <Label htmlFor="new">Upload a new resume</Label>
                 </div>
                 {selectedResumeType === "new" && (
-                  <div className="ml-6">
+                  <div className="pl-6 mt-2">
                     <ResumeUpload
-                      onUploadComplete={async (file, name) => {
-                        if (!user) return;
-                        setIsLoading(true);
-                        try {
-                          await uploadResume(file, user.id, name);
-                          await loadResumes();
-                          toast({
-                            title: "Resume uploaded",
-                            description: "Your resume has been successfully uploaded.",
-                          });
-                          setSelectedResumeType("saved");
-                        } catch (error) {
-                          toast({
-                            title: "Upload failed",
-                            description: "Failed to upload your resume. Please try again.",
-                            variant: "destructive",
-                          });
-                        } finally {
-                          setIsLoading(false);
-                        }
-                      }}
+                      onUploadComplete={(file, name) => handleFileUpload(file, name)}
                     />
                   </div>
                 )}
@@ -310,88 +354,61 @@ export default function Optimize() {
             </CardContent>
           </Card>
 
-          {/* Job Details Section */}
-          <Card className="h-fit">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg">Job Details</CardTitle>
-              <CardDescription className="text-sm">
-                Enter the job posting URL or paste the job description
-              </CardDescription>
+          <Card>
+            <CardHeader>
+              <CardTitle>Job Details</CardTitle>
+              <CardDescription>Enter the job description or paste the job posting URL</CardDescription>
             </CardHeader>
             <CardContent>
-              <Tabs defaultValue="url" className="space-y-2">
-                <TabsList>
-                  <TabsTrigger value="url">Job URL</TabsTrigger>
+              <Tabs defaultValue="description">
+                <TabsList className="mb-4">
                   <TabsTrigger value="description">Job Description</TabsTrigger>
+                  <TabsTrigger value="url">Job URL</TabsTrigger>
                 </TabsList>
-                <TabsContent value="url">
-                  <div className="space-y-1">
-                    <Label htmlFor="job-url" className="text-sm">Job Posting URL</Label>
-                    <Input
-                      id="job-url"
-                      placeholder="https://..."
-                      value={jobUrl}
-                      onChange={(e) => setJobUrl(e.target.value)}
-                    />
-                  </div>
-                </TabsContent>
+
                 <TabsContent value="description">
-                  <div className="space-y-1">
-                    <Label htmlFor="job-description" className="text-sm">Job Description</Label>
-                    <Textarea
-                      id="job-description"
-                      placeholder="Paste the job description here..."
-                      className="min-h-[120px] max-h-[120px]"
-                      value={jobDescription}
-                      onChange={(e) => setJobDescription(e.target.value)}
-                    />
-                  </div>
+                  <Textarea
+                    placeholder="Paste the full job description here..."
+                    className="min-h-40 mb-4"
+                    value={jobDescription}
+                    onChange={(e) => updateJobDescription(e.target.value)}
+                  />
+                </TabsContent>
+
+                <TabsContent value="url">
+                  <Input
+                    placeholder="https://example.com/jobs/software-engineer"
+                    className="mb-4"
+                    value={jobUrl}
+                    onChange={(e) => updateJobUrl(e.target.value)}
+                  />
                 </TabsContent>
               </Tabs>
+
+              <Button
+                className="w-full"
+                onClick={handleOptimize}
+                disabled={isLoading}
+              >
+                {isLoading ? "Processing..." : "Start Optimization"}
+              </Button>
             </CardContent>
           </Card>
-        </div>
-
-        <div className="max-w-6xl mx-auto mt-4">
-          {/* Add debug info */}
-          <div className="text-xs text-muted-foreground mb-2">
-            <pre>
-              {JSON.stringify({
-                selectedResumeType,
-                selectedResumeId,
-                hasJobDescription: !!jobDescription,
-                hasJobUrl: !!jobUrl,
-                isLoading,
-              }, null, 2)}
-            </pre>
-          </div>
-          <Button
-            className="w-full"
-            size="lg"
-            onClick={handleOptimize}
-            disabled={
-              (selectedResumeType === "saved" && !selectedResumeId) || 
-              (!jobDescription.trim() && !jobUrl.trim()) || 
-              isLoading
-            }
-          >
-            {isLoading ? "Optimizing..." : "Start Optimization"}
-          </Button>
         </div>
       </div>
 
       <Dialog open={isEditingName} onOpenChange={setIsEditingName}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Rename Resume</DialogTitle>
+            <DialogTitle>Edit Resume Name</DialogTitle>
             <DialogDescription>
-              Enter a new name for your resume
+              Enter a new name for your resume.
             </DialogDescription>
           </DialogHeader>
-          <Input
-            value={newResumeName}
+          <Input 
+            value={newResumeName} 
             onChange={(e) => setNewResumeName(e.target.value)}
-            placeholder="Enter new name"
+            placeholder="Resume name"
           />
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsEditingName(false)}>

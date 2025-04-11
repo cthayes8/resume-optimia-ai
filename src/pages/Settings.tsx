@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Helmet } from "react-helmet";
+import { Helmet } from "react-helmet-async";
 import { toast } from "sonner";
 import { UserCog, Lock, CreditCard, Bell, LogOut } from "lucide-react";
 import { useNavigate } from "react-router-dom";
