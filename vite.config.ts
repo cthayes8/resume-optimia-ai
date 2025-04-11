@@ -11,6 +11,7 @@ export default defineConfig(({ mode }) => {
     server: {
       host: "::",
       port: 3000,
+      strictPort: true,
       proxy: {
         '/v1/ai': {
           target: 'https://api.tiptap.dev',
@@ -24,6 +25,11 @@ export default defineConfig(({ mode }) => {
               proxyReq.setHeader('X-App-ID', appId);
             });
           }
+        },
+        '/api': {
+          target: 'http://localhost:3001',
+          changeOrigin: true,
+          secure: false
         }
       }
     },

@@ -1,5 +1,5 @@
-
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Link2, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -8,36 +8,33 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/use-toast";
 
 interface JobDescriptionInputProps {
-  onSubmit: (data: { type: 'description' | 'url', content: string }) => void;
+  resumeId: string;
 }
 
-export default function JobDescriptionInput({ onSubmit }: JobDescriptionInputProps) {
+export default function JobDescriptionInput({ resumeId }: JobDescriptionInputProps) {
   const [jobDescription, setJobDescription] = useState("");
   const [jobUrl, setJobUrl] = useState("");
   const [activeTab, setActiveTab] = useState<"description" | "url">("description");
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
+  const navigate = useNavigate();
 
-  const handleSubmit = () => {
-    if (activeTab === "description" && !jobDescription.trim()) {
+  const SCRAPINGBEE_API_KEY = import.meta.env.VITE_SCRAPINGBEE_API_KEY;
+
+  const handleSubmit = async () => {
+    const isDescriptionTab = activeTab === "description";
+    const content = isDescriptionTab ? jobDescription.trim() : jobUrl.trim();
+
+    if (!content) {
       toast({
-        title: "Job description required",
-        description: "Please enter a job description",
+        title: isDescriptionTab ? "Job description required" : "Job URL required",
+        description: `Please enter a ${isDescriptionTab ? "job description" : "valid job posting URL"}`,
         variant: "destructive",
       });
       return;
     }
 
-    if (activeTab === "url" && !jobUrl.trim()) {
-      toast({
-        title: "Job URL required",
-        description: "Please enter a job posting URL",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (activeTab === "url" && !isValidUrl(jobUrl)) {
+    if (!isDescriptionTab && !isValidUrl(content)) {
       toast({
         title: "Invalid URL",
         description: "Please enter a valid URL",
@@ -48,19 +45,37 @@ export default function JobDescriptionInput({ onSubmit }: JobDescriptionInputPro
 
     setIsLoading(true);
 
-    // Simulate API call delay
-    setTimeout(() => {
-      const content = activeTab === "description" ? jobDescription : jobUrl;
-      onSubmit({ type: activeTab, content });
-      setIsLoading(false);
-    }, 1500);
+    let finalDescription = content;
+
+    if (!isDescriptionTab) {
+      try {
+        const response = await fetch(`https://app.scrapingbee.com/api/v1?api_key=${SCRAPINGBEE_API_KEY}&url=${encodeURIComponent(content)}&extract_rules={\"text\":\"body\"}`);
+        const data = await response.json();
+        finalDescription = data?.text || "";
+
+        if (!finalDescription.trim()) {
+          throw new Error("Scraped content was empty");
+        }
+      } catch (error) {
+        toast({
+          title: "Scraping failed",
+          description: "We couldn’t extract the job description. Please paste it manually.",
+          variant: "destructive",
+        });
+        setIsLoading(false);
+        return;
+      }
+    }
+
+    localStorage.setItem("resumeOptimia_results_jobDescription", finalDescription);
+    navigate(`/optimize/results?resumeId=${resumeId}`);
   };
 
   const isValidUrl = (url: string) => {
     try {
       new URL(url);
       return true;
-    } catch (e) {
+    } catch {
       return false;
     }
   };
@@ -82,7 +97,7 @@ export default function JobDescriptionInput({ onSubmit }: JobDescriptionInputPro
             Job Posting URL
           </TabsTrigger>
         </TabsList>
-        
+
         <TabsContent value="description" className="mt-4">
           <Textarea
             placeholder="Paste the job description here..."
@@ -91,7 +106,7 @@ export default function JobDescriptionInput({ onSubmit }: JobDescriptionInputPro
             onChange={(e) => setJobDescription(e.target.value)}
           />
         </TabsContent>
-        
+
         <TabsContent value="url" className="mt-4">
           <div className="space-y-2">
             <Input

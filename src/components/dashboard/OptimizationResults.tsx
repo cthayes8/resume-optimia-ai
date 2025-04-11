@@ -277,13 +277,13 @@ export default function OptimizationResults({
             </Button>
           </div>
         </div>
-        <div className="min-w-[8.5in]">
-          <ResumeEditor
-            content={resumeContent}
-            onChange={onResumeContentChange}
-            optimizationId={optimizationId}
-          />
-        </div>
+        <div className="w-full max-w-[1400px] mx-auto">
+  <ResumeEditor
+    content={resumeContent}
+    onChange={onResumeContentChange}
+    optimizationId={optimizationId}
+  />
+</div>
       </div>
     </div>
   );
