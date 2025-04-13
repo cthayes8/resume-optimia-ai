@@ -1,0 +1,12 @@
+/**
+ * Basic styles for the AI Suggestion extension. They show underlined text on the suggestions.
+ */
+ .tiptap-ai-suggestion {
+    border-bottom: 2px solid var(--tiptap-ai-suggestion-color);
+    margin-bottom: -2px;
+  }
+  
+  .tiptap-ai-suggestion--selected {
+    background-color: var(--tiptap-ai-suggestion-background-color);
+    transition: background-color 0.5s;
+  }

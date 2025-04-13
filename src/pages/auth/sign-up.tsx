@@ -32,17 +32,45 @@ export default function SignUp() {
 
     try {
       setIsLoading(true);
+      
+      // First check if the email is already registered
+      const { data: existingUser } = await supabase
+        .from('users')
+        .select('email')
+        .eq('email', form.email)
+        .single();
+
+      if (existingUser) {
+        toast.error("This email is already registered. Please sign in instead.");
+        return;
+      }
+
+      // Attempt to sign up the user
       const { data, error } = await supabase.auth.signUp({
         email: form.email,
         password: form.password,
         options: {
           emailRedirectTo: `${window.location.origin}/auth/callback`,
+          data: {
+            email: form.email,
+          }
         }
       });
 
-      if (error) throw error;
+      if (error) {
+        if (error.message.includes('unique constraint')) {
+          toast.error("This email is already registered. Please sign in instead.");
+        } else if (error.message.includes('valid email')) {
+          toast.error("Please enter a valid email address.");
+        } else if (error.message.includes('password')) {
+          toast.error("Password is too weak. Please use at least 8 characters.");
+        } else {
+          throw error;
+        }
+        return;
+      }
 
-      // Create user record in our users table
+      // Only create user record if sign up was successful
       if (data.user) {
         const { error: userError } = await supabase
           .from('users')
@@ -53,16 +81,30 @@ export default function SignUp() {
               created_at: new Date().toISOString(),
               updated_at: new Date().toISOString(),
             }
-          ]);
+          ])
+          .select()
+          .single();
 
-        if (userError) throw userError;
+        if (userError) {
+          console.error('Error creating user record:', userError);
+          // Don't throw here - the auth account was created successfully
+          toast.error("Account created but there was an issue setting up your profile. Please contact support.");
+        } else {
+          toast.success("Please check your email to confirm your account");
+        }
       }
 
-      toast.success("Check your email to confirm your account");
       navigate("/auth/sign-in");
     } catch (error: any) {
       console.error('Error signing up:', error);
-      toast.error(error.message || "Failed to sign up");
+      // More specific error messages
+      if (error.message.includes('network')) {
+        toast.error("Network error. Please check your internet connection.");
+      } else if (error.message.includes('rate limit')) {
+        toast.error("Too many attempts. Please try again later.");
+      } else {
+        toast.error(error.message || "Failed to sign up. Please try again.");
+      }
     } finally {
       setIsLoading(false);
     }
@@ -71,10 +113,19 @@ export default function SignUp() {
   const handleGoogleSignUp = async () => {
     try {
       setIsLoading(true);
-      await signInWithGoogle();
+      const response = await signInWithGoogle();
+      
+      // Google sign in was successful
+      toast.success("Successfully signed in with Google!");
     } catch (error: any) {
       console.error('Error signing up with Google:', error);
-      toast.error(error.message || "Failed to sign up with Google");
+      if (error.message.includes('popup')) {
+        toast.error("Popup was blocked. Please allow popups for this site.");
+      } else if (error.message.includes('network')) {
+        toast.error("Network error. Please check your internet connection.");
+      } else {
+        toast.error(error.message || "Failed to sign up with Google");
+      }
     } finally {
       setIsLoading(false);
     }

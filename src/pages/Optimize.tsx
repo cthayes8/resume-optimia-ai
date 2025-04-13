@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { getUserResumes, uploadResume, deleteResume, updateResumeName, type Resume } from "@/services/resumes";
 import { useAuth } from "@/contexts/AuthContext";
 import ResumeUpload from "@/components/dashboard/ResumeUpload";
+import { supabase } from "@/lib/supabase";
 
 // Local storage keys for persisting state
 const STORAGE_KEY_PREFIX = 'resumeOptimia_';
@@ -26,6 +27,7 @@ export default function Optimize() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
+  const [userSubscription, setUserSubscription] = useState<string | null>(null);
   
   // Initialize state from localStorage or defaults
   const [selectedResumeType, setSelectedResumeType] = useState<"saved" | "new">(() => {
@@ -67,6 +69,24 @@ export default function Optimize() {
   useEffect(() => {
     localStorage.setItem(JOB_URL_KEY, jobUrl);
   }, [jobUrl]);
+
+  useEffect(() => {
+    const checkSubscription = async () => {
+      if (user?.id) {
+        const { data: userData, error } = await supabase
+          .from('users')
+          .select('subscription_type')
+          .eq('id', user.id)
+          .single();
+        
+        if (!error && userData) {
+          setUserSubscription(userData.subscription_type);
+        }
+      }
+    };
+
+    checkSubscription();
+  }, [user]);
 
   // Custom state updaters that also update localStorage
   const updateSelectedResumeType = (value: "saved" | "new") => {
@@ -243,27 +263,35 @@ export default function Optimize() {
   };
 
   const handleOptimize = async () => {
-    // Validate resume selection
-    if (selectedResumeType === "saved" && !selectedResumeId) {
+    if (!user) {
       toast({
-        title: "Resume required",
-        description: "Please select a resume to optimize.",
+        title: "Not logged in",
+        description: "Please log in to optimize your resume.",
         variant: "destructive",
       });
       return;
     }
 
-    // Validate job details
+    if (!selectedResumeId) {
+      toast({
+        title: "No resume selected",
+        description: "Please select or upload a resume first.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     if (!jobDescription.trim() && !jobUrl.trim()) {
       toast({
-        title: "Job details required",
-        description: "Please provide either a job description or URL.",
+        title: "Job information required",
+        description: "Please enter a job description or URL.",
         variant: "destructive",
       });
       return;
     }
 
     setIsLoading(true);
+
     try {
       // Find the selected resume
       const selectedResume = resumes.find(r => r.id === selectedResumeId);
@@ -271,31 +299,25 @@ export default function Optimize() {
         throw new Error("Selected resume not found");
       }
 
-      // Get the resume content
-      let resumeContent = "";
-      if (selectedResume.data && typeof selectedResume.data === 'object') {
-        resumeContent = (selectedResume.data as any).content || "";
-      }
+      // Store optimization data in localStorage
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}selectedResumeId`, selectedResumeId);
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}activeJobDescription`, jobDescription.trim());
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}activeJobUrl`, jobUrl.trim());
 
-      // Get the job details
-      const jobDetails = jobDescription.trim() || jobUrl.trim();
-
-      // TODO: Send to optimization API
-      toast({
-        title: "Starting optimization",
-        description: "Your resume is being optimized. This may take a few moments.",
+      // Navigate to results page with required state
+      navigate("/optimize/results", {
+        state: {
+          resumeId: selectedResumeId,
+          source: 'optimize',
+          jobDescription: jobDescription.trim(),
+          jobUrl: jobUrl.trim()
+        }
       });
-
-      // For now, simulate the optimization process
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      // Navigate to the results page using React Router
-      navigate(`/optimize/results?resumeId=${selectedResumeId}`);
     } catch (error) {
-      console.error('Error optimizing resume:', error);
+      console.error('Error starting optimization:', error);
       toast({
         title: "Optimization failed",
-        description: error instanceof Error ? error.message : "Failed to optimize your resume. Please try again.",
+        description: error instanceof Error ? error.message : "Failed to start optimization",
         variant: "destructive",
       });
     } finally {

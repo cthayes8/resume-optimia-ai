@@ -6,7 +6,9 @@ import OpenAI from 'openai';
 
 const app = express();
 const port = 3001; // Different from your frontend port
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const openai = new OpenAI({
+  apiKey: process.env.VITE_OPENAI_API_KEY,
+});
 
 // Allow CORS from any origin during development
 app.use(cors({
@@ -15,6 +17,36 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 app.use(express.json());
+
+// Add these interfaces near the top of the file
+interface HtmlChunk {
+  id: string;
+  html: string;
+  generateSuggestions: boolean;
+}
+
+interface Rule {
+  id: string;
+  title: string;
+  prompt: string;
+}
+
+interface Suggestion {
+  ruleId: string;
+  deleteHtml: string;
+  insertHtml: string;
+  reasoning: string;
+  chunkId: string;
+}
+
+interface ProcessedChunk extends HtmlChunk {
+  suggestions: Array<{
+    ruleId: string;
+    deleteHtml: string;
+    insertHtml: string;
+    chunkId: string;
+  }>;
+}
 
 app.post('/api/analyze-keywords', async (req, res) => {
   try {
@@ -279,6 +311,166 @@ Return your response as a JSON array of objects with 'original' and 'improved' f
   }
 });
 
+// Update the endpoint with proper types
+app.post('/api/suggestions', async (req, res) => {
+  const { html, htmlChunks, rules }: { 
+    html: string; 
+    htmlChunks: HtmlChunk[]; 
+    rules: { id: string; title: string; prompt: string; }[];
+  } = req.body;
+
+  try {
+    // Process only chunks that need suggestions
+    const chunksToProcess = htmlChunks.filter(chunk => {
+      const sectionType = getSectionType(chunk.html);
+      // Only process chunks that are clearly identifiable sections or small content pieces
+      return chunk.generateSuggestions && sectionType !== 'MULTIPLE';
+    });
+    
+    if (chunksToProcess.length === 0) {
+      return res.json({
+        format: "replacements",
+        content: {
+          htmlChunks: htmlChunks.map(chunk => ({
+            id: chunk.id,
+            html: chunk.html,
+            generateSuggestions: false
+          })),
+          items: []
+        }
+      });
+    }
+
+    // Group chunks by section type
+    const sectionGroups: { [key: string]: HtmlChunk[] } = {};
+    chunksToProcess.forEach(chunk => {
+      const sectionType = getSectionType(chunk.html);
+      if (!sectionGroups[sectionType]) {
+        sectionGroups[sectionType] = [];
+      }
+      sectionGroups[sectionType].push(chunk);
+    });
+
+    // Process each section group
+    const processedChunks: ProcessedChunk[] = [];
+    
+    for (const [sectionType, chunks] of Object.entries(sectionGroups)) {
+      // Skip processing for unidentified or multiple sections
+      if (sectionType === 'MULTIPLE' || sectionType === 'CONTACT') {
+        chunks.forEach(chunk => {
+          processedChunks.push({ ...chunk, suggestions: [] });
+        });
+        continue;
+      }
+
+      const sectionHtml = chunks.map(chunk => chunk.html).join('\n\n');
+      
+      try {
+        const completion = await openai.chat.completions.create({
+          model: "gpt-4-turbo-preview",
+          messages: [
+            {
+              role: "system",
+              content: `You are an expert resume optimizer focusing on ${sectionType} sections. Analyze the content and suggest specific improvements.
+
+Guidelines for ${sectionType} sections:
+${getSectionGuidelines(sectionType)}
+
+Important:
+- Only suggest changes for SPECIFIC phrases or sentences
+- Do NOT suggest replacing entire paragraphs or sections
+- Each suggestion should focus on a single improvement
+- Ensure suggestions maintain the original context and structure
+
+Provide exactly ${Math.min(chunks.length, 2)} suggestions that significantly improve different parts of this section.`
+            },
+            {
+              role: "user",
+              content: `Analyze this ${sectionType} section and provide specific improvements:
+
+${sectionHtml}
+
+Respond in JSON format:
+{
+  "suggestions": [
+    {
+      "originalText": "exact text to replace (must be a specific phrase, not an entire paragraph)",
+      "improvedText": "improved version (maintaining similar length and structure)",
+      "reasoning": "explanation of the improvement"
+    }
+  ]
+}`
+            }
+          ],
+          temperature: 0.3,
+          max_tokens: 1000,
+          response_format: { type: "json_object" }
+        });
+
+        if (completion.choices[0].message.content) {
+          const aiResponse = JSON.parse(completion.choices[0].message.content);
+          
+          // Map suggestions back to chunks
+          chunks.forEach(chunk => {
+            const chunkSuggestions = aiResponse.suggestions
+              ?.filter((s: any) => chunk.html.includes(s.originalText))
+              ?.map((s: any) => ({
+                ruleId: rules[0].id,
+                deleteHtml: s.originalText,
+                insertHtml: s.improvedText,
+                chunkId: chunk.id
+              }))
+              ?.filter((s: any) => isValidSuggestion(s.insertHtml, sectionType)) || [];
+
+            processedChunks.push({
+              ...chunk,
+              suggestions: chunkSuggestions
+            });
+          });
+        }
+      } catch (error) {
+        console.error(`Error processing ${sectionType} section:`, error);
+        chunks.forEach(chunk => {
+          processedChunks.push({ ...chunk, suggestions: [] });
+        });
+      }
+    }
+
+    // Combine with unprocessed chunks
+    const allChunks = htmlChunks.map(chunk => {
+      const processed = processedChunks.find(p => p.id === chunk.id);
+      return processed || { ...chunk, suggestions: [] } as ProcessedChunk;
+    });
+
+    const finalResponse = {
+      format: "replacements",
+      content: {
+        htmlChunks: allChunks.map(({ suggestions, ...chunk }) => ({
+          id: chunk.id,
+          html: chunk.html,
+          generateSuggestions: false
+        })),
+        items: allChunks.flatMap(chunk => chunk.suggestions || [])
+      }
+    };
+
+    res.json(finalResponse);
+  } catch (error) {
+    console.error('Error in suggestions endpoint:', error);
+    res.status(500).json({ 
+      format: "replacements",
+      content: {
+        htmlChunks: htmlChunks.map(chunk => ({
+          id: chunk.id,
+          html: chunk.html,
+          generateSuggestions: false
+        })),
+        items: []
+      }
+    });
+  }
+});
+
 // Helper function to process OpenAI response
 async function processOpenAIResponse(completion: any, defaultRules: any[]) {
   try {
@@ -431,6 +623,164 @@ function getRandomActionVerb() {
   ];
   
   return actionVerbs[Math.floor(Math.random() * actionVerbs.length)];
+}
+
+// Helper function to determine section type from content
+function getSectionType(html: string): string {
+  // First try to find an explicit section header
+  const headerMatch = html.match(/<h[1-6][^>]*>([^<]+)<\/h[1-6]>|^(SUMMARY|EXPERIENCE|EDUCATION|SKILLS|CERTIFICATIONS)[:\s]*$/mi);
+  if (headerMatch) {
+    const header = (headerMatch[1] || headerMatch[2]).toLowerCase();
+    if (header.includes('summary') || header.includes('profile') || header.includes('objective')) {
+      return 'SUMMARY';
+    }
+    if (header.includes('experience') || header.includes('employment') || header.includes('work')) {
+      return 'EXPERIENCE';
+    }
+    if (header.includes('education') || header.includes('academic')) {
+      return 'EDUCATION';
+    }
+    if (header.includes('skills') || header.includes('expertise') || header.includes('competencies')) {
+      return 'SKILLS';
+    }
+    if (header.includes('certifications') || header.includes('licenses')) {
+      return 'CERTIFICATIONS';
+    }
+  }
+
+  // If no header found, analyze the content
+  const lowerHtml = html.toLowerCase();
+  const contentLength = html.length;
+
+  // Don't process chunks that are too large (likely multiple sections)
+  if (contentLength > 1000) {
+    return 'MULTIPLE';
+  }
+
+  // Look for section-specific patterns
+  if (lowerHtml.match(/^[A-Z][a-z]+ [A-Z][a-z]+\s*[\|\-•]\s*.+@.+\..+/)) {
+    return 'CONTACT';
+  }
+  
+  if (lowerHtml.includes('university') || lowerHtml.includes('college') || lowerHtml.includes('gpa')) {
+    return 'EDUCATION';
+  }
+
+  if (lowerHtml.match(/\b(20\d{2}|19\d{2})\b/) && 
+      (lowerHtml.includes('present') || 
+       lowerHtml.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/))) {
+    return 'EXPERIENCE';
+  }
+
+  if (lowerHtml.match(/proficient in|expertise in|skilled in|knowledge of|\b(advanced|intermediate|expert)\b/)) {
+    return 'SKILLS';
+  }
+
+  // For small chunks that don't match any pattern, mark as CONTENT
+  if (contentLength < 500) {
+    return 'CONTENT';
+  }
+
+  return 'MULTIPLE';
+}
+
+// Helper function to validate suggestions based on section type
+function isValidSuggestion(suggestion: string, sectionType: string): boolean {
+  const lowerSuggestion = suggestion.toLowerCase();
+  
+  // Common validation for all sections
+  if (suggestion.length < 10 || suggestion.length > 500) {
+    return false;
+  }
+
+  switch (sectionType) {
+    case 'SUMMARY':
+      // Should include experience or expertise indicators
+      return (
+        lowerSuggestion.includes('experience') ||
+        lowerSuggestion.includes('professional') ||
+        lowerSuggestion.includes('expertise') ||
+        lowerSuggestion.includes('background')
+      );
+    
+    case 'EXPERIENCE':
+      // Should include metrics or achievements
+      return (
+        lowerSuggestion.includes('%') ||
+        lowerSuggestion.includes('$') ||
+        /\d+/.test(lowerSuggestion) ||
+        /\b(led|managed|developed|implemented|launched|created)\b/i.test(lowerSuggestion)
+      );
+    
+    case 'EDUCATION':
+      // Should include academic-related terms
+      return (
+        lowerSuggestion.includes('degree') ||
+        lowerSuggestion.includes('university') ||
+        lowerSuggestion.includes('college') ||
+        lowerSuggestion.includes('gpa') ||
+        lowerSuggestion.includes('honors')
+      );
+    
+    case 'SKILLS':
+      // Should include skill levels or technical terms
+      return (
+        lowerSuggestion.includes('proficient') ||
+        lowerSuggestion.includes('expert') ||
+        lowerSuggestion.includes('advanced') ||
+        lowerSuggestion.includes('experience with') ||
+        /\b(years|certification|qualified|trained)\b/i.test(lowerSuggestion)
+      );
+    
+    default:
+      // For general sections, require at least some measurable impact
+      return (
+        lowerSuggestion.includes('%') ||
+        lowerSuggestion.includes('$') ||
+        /\d+/.test(lowerSuggestion) ||
+        /\b(achieved|improved|reduced|increased)\b/i.test(lowerSuggestion)
+      );
+  }
+}
+
+// Helper function to get section-specific guidelines
+function getSectionGuidelines(sectionType: string): string {
+  switch (sectionType) {
+    case 'SUMMARY':
+      return `- Start with a strong professional title
+- Include years of experience and key specializations
+- Highlight 2-3 most impressive metrics or achievements
+- Focus on unique value proposition
+- Keep length to 3-4 impactful sentences`;
+    
+    case 'EXPERIENCE':
+      return `- Begin each bullet with a strong action verb
+- Include specific metrics (%, $, team size, etc.)
+- Highlight scope and impact of work
+- Focus on achievements over responsibilities
+- Quantify results where possible`;
+    
+    case 'EDUCATION':
+      return `- List relevant coursework and projects
+- Include GPA if above 3.5
+- Highlight academic achievements and honors
+- Mention relevant research or thesis work
+- Include certifications and training`;
+    
+    case 'SKILLS':
+      return `- Group related skills together
+- Indicate proficiency levels
+- Highlight most relevant skills first
+- Include both technical and soft skills
+- Add years of experience where relevant`;
+    
+    default:
+      return `- Use strong action verbs
+- Include specific metrics and achievements
+- Focus on measurable impact
+- Maintain professional tone
+- Ensure clarity and conciseness`;
+  }
 }
 
 app.listen(port, () => {

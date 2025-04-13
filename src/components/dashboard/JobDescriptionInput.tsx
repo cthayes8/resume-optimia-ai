@@ -49,17 +49,70 @@ export default function JobDescriptionInput({ resumeId }: JobDescriptionInputPro
 
     if (!isDescriptionTab) {
       try {
-        const response = await fetch(`https://app.scrapingbee.com/api/v1?api_key=${SCRAPINGBEE_API_KEY}&url=${encodeURIComponent(content)}&extract_rules={\"text\":\"body\"}`);
-        const data = await response.json();
-        finalDescription = data?.text || "";
+        // Configure ScrapingBee API request
+        const apiUrl = `https://app.scrapingbee.com/api/v1`;
+        const params = new URLSearchParams({
+          'api_key': SCRAPINGBEE_API_KEY,
+          'url': content,
+          'extract_rules': JSON.stringify({
+            "jobDescription": {
+              "selector": "body", // We'll clean this up after extraction
+              "type": "text"
+            }
+          }),
+          'premium_proxy': 'true', // Use premium proxies for better success rate
+          'render_js': 'true' // Handle JavaScript-rendered content
+        });
 
-        if (!finalDescription.trim()) {
-          throw new Error("Scraped content was empty");
+        const response = await fetch(`${apiUrl}?${params}`);
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
         }
+
+        const data = await response.json();
+        let extractedText = data?.jobDescription || '';
+
+        if (!extractedText.trim()) {
+          throw new Error("No content extracted from URL");
+        }
+
+        // Clean up the extracted text
+        finalDescription = extractedText
+          // Remove excessive whitespace
+          .replace(/\s+/g, ' ')
+          // Remove common non-job-description elements
+          .replace(/(Cookie Policy|Privacy Policy|Terms of Use|©\s*\d{4}|All Rights Reserved)/gi, '')
+          .trim();
+
+        if (finalDescription.length < 50) {
+          throw new Error("Extracted content seems too short to be a job description");
+        }
+
+        // Store the scraped content
+        localStorage.setItem("resumeOptimia_scraped_url", content);
+        localStorage.setItem("resumeOptimia_scraped_timestamp", new Date().toISOString());
+
       } catch (error) {
+        console.error('Scraping error:', error);
+        
+        let errorMessage = "We couldn't extract the job description. Please paste it manually.";
+        
+        if (error instanceof Error) {
+          if (error.message.includes('402')) {
+            errorMessage = "API credits exhausted. Please paste the job description manually.";
+          } else if (error.message.includes('403')) {
+            errorMessage = "Access to this job posting is restricted. Please paste the description manually.";
+          } else if (error.message.includes('429')) {
+            errorMessage = "Too many requests. Please try again in a few minutes or paste the description manually.";
+          } else if (error.message.includes('timeout')) {
+            errorMessage = "The request timed out. Please try again or paste the description manually.";
+          }
+        }
+
         toast({
           title: "Scraping failed",
-          description: "We couldn’t extract the job description. Please paste it manually.",
+          description: errorMessage,
           variant: "destructive",
         });
         setIsLoading(false);
@@ -67,7 +120,10 @@ export default function JobDescriptionInput({ resumeId }: JobDescriptionInputPro
       }
     }
 
+    // Store the final description
     localStorage.setItem("resumeOptimia_results_jobDescription", finalDescription);
+    
+    // Navigate to results
     navigate(`/optimize/results?resumeId=${resumeId}`);
   };
 

@@ -48,8 +48,8 @@ export default function Dashboard() {
       </Helmet>
 
       <DashboardLayout>
-        <div className="space-y-8">
-          <div>
+        <div className="space-y-8 p-8">
+          <div className="pl-4">
             <h2 className="text-2xl font-bold tracking-tight">Welcome back, {user?.user_metadata?.full_name || 'User'}</h2>
             <p className="text-muted-foreground">
               Optimize your resume to increase your interview chances

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
@@ -11,10 +11,24 @@ import {
   ChevronRight,
   LogOut
 } from "lucide-react";
+import { signOut } from "@/lib/supabase";
+import { toast } from "sonner";
 
 export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
+
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      toast.success("Successfully signed out");
+      navigate("/auth/sign-in");
+    } catch (error) {
+      console.error('Error signing out:', error);
+      toast.error("Failed to sign out");
+    }
+  };
 
   const navigationItems = [
     {
@@ -91,6 +105,7 @@ export default function Sidebar() {
             "w-full flex items-center gap-2",
             collapsed && "justify-center"
           )}
+          onClick={handleSignOut}
         >
           <LogOut className="h-5 w-5" />
           {!collapsed && <span>Sign Out</span>}
