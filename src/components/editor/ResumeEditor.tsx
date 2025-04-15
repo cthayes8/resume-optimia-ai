@@ -19,7 +19,7 @@ import TableHeader from '@tiptap/extension-table-header';
 import TableRow from '@tiptap/extension-table-row';
 import { ExportDocx } from '@tiptap-pro/extension-export-docx';
 import { ImportDocx } from '@tiptap-pro/extension-import-docx';
-import AiSuggestion, { type AiSuggestionOptions, type AiSuggestionRule } from '@tiptap-pro/extension-ai-suggestion';
+import AiSuggestion, { type AiSuggestionRule } from '@tiptap-pro/extension-ai-suggestion';
 import Ai from '@tiptap-pro/extension-ai';
 import CharacterCount from '@tiptap/extension-character-count';
 import Focus from '@tiptap/extension-focus';
@@ -31,15 +31,12 @@ import { createResumeAIRules, aiConfig } from '@/config/aiPrompts';
 import AiSuggestionPanel from './AiSuggestionPanel';
 import { useRef, useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Loader2, Type, AlignLeft, AlignCenter, AlignRight, Superscript as SuperscriptIcon, Subscript as SubscriptIcon } from 'lucide-react';
+import { Loader2, AlignLeft, AlignCenter, AlignRight, Superscript as SuperscriptIcon, Subscript as SubscriptIcon } from 'lucide-react';
 import mammoth from 'mammoth';
 import * as pdfjs from 'pdfjs-dist';
-import { Decoration } from '@tiptap/pm/view'
-import '@/components/suggestions/extension-styles.css'
-import '@/components/suggestions/styles.scss'
+import '@/components/suggestions/extension-styles.css';
+import '@/components/suggestions/styles.scss';
 
-
-// Set worker path for PDF.js
 pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
 
 interface ResumeEditorProps {
@@ -197,92 +194,196 @@ export default function ResumeEditor({ content, onChange, jobDescription }: Resu
             jobDescription
           });
           
-          return defaultResolver({
-            ...options,
-            apiResolver: async ({ html, rules }) => {
-              try {
-                console.log('Making API request with:', {
-                  contentLength: html?.length,
-                  rulesCount: rules?.length,
+          try {
+            console.log('Making API request with:', {
+              contentLength: editor.getHTML().length,
+              rulesCount: options.rules?.length,
+            });
+
+            const response = await fetch('/api/suggestions', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                resumeHtml: editor.getHTML(),
+                jobDescription,
+              }),
+            });
+
+            if (!response.ok) {
+              const errorText = await response.text();
+              console.error('Suggestions API error:', {
+                status: response.status,
+                statusText: response.statusText,
+                error: errorText
+              });
+              throw new Error(`Failed to fetch suggestions: ${response.status} ${errorText}`);
+            }
+
+            const data = await response.json();
+            console.log('Received suggestions response:', data);
+
+            // Map our API response to the format TipTap expects
+            if (data?.content?.items?.length > 0) {
+              // Prepare suggestions in TipTap format
+              const formattedSuggestions = data.content.items.map(item => {
+                // Find the exact text in the document to get the correct ranges
+                const deleteText = item.deleteText;
+                let foundRange = null;
+                
+                // Find the text in the document
+                editor.state.doc.descendants((node, pos) => {
+                  if (node.isText && node.text?.includes(deleteText)) {
+                    const start = pos + node.text.indexOf(deleteText);
+                    foundRange = { from: start, to: start + deleteText.length };
+                    return false; // Stop traversal
+                  }
+                  return true; // Continue traversal
                 });
-
-                const htmlChunks = html.split(/(<\/p>|<\/h[1-6]>)/).filter(Boolean).map((chunk, index) => ({
-                  id: `chunk-${index}`,
-                  html: chunk,
-                  generateSuggestions: true
-                }));
-
-                console.log('Created chunks:', {
-                  totalChunks: htmlChunks.length,
-                  sampleChunk: htmlChunks[0]
-                });
-
-                const response = await fetch('/api/suggestions', {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                  },
-                  body: JSON.stringify({ 
-                    html,
-                    htmlChunks,
-                    rules 
-                  }),
-                });
-
-                if (!response.ok) {
-                  const errorText = await response.text();
-                  console.error('Suggestions API error:', {
-                    status: response.status,
-                    statusText: response.statusText,
-                    error: errorText
-                  });
-                  throw new Error(`Failed to fetch suggestions: ${response.status} ${errorText}`);
-                }
-
-                const data = await response.json();
-                console.log('Received suggestions response:', data);
-                return data;
-              } catch (error) {
-                console.error('Error in suggestions resolver:', error);
-                throw error;
-              }
-            },
-          });
+                
+                // Find appropriate rule from TipTap config
+                const matchingRule = options.rules?.find(r => 
+                  r.id === item.category || 
+                  r.metadata?.category === item.category
+                ) || options.rules?.[0] || {
+                  id: 'default',
+                  title: 'Improvement',
+                  prompt: '',
+                  color: '#00B8D9',
+                  backgroundColor: '#E6FCFF'
+                };
+                
+                return {
+                  id: item.id,
+                  deleteText: item.deleteText,
+                  replacementOptions: item.replacementOptions.map(opt => ({
+                    id: opt.id,
+                    addText: opt.addText,
+                    reasoning: opt.reasoning,
+                    metadata: {
+                      category: opt.category || 'general'
+                    }
+                  })),
+                  rule: matchingRule,
+                  deleteRange: foundRange || { from: 0, to: 0 },
+                  deleteSlice: null,
+                  isRejected: false,
+                  metadata: {
+                    category: item.category || 'general'
+                  }
+                };
+              });
+              
+              // Store for immediate availability in the UI
+              console.log('Setting suggestions from resolver:', formattedSuggestions);
+              editor.commands.setAiSuggestions(formattedSuggestions);
+              
+              return formattedSuggestions;
+            }
+            
+            return [];
+          } catch (error) {
+            console.error('Error in suggestions resolver:', error);
+            return [];
+          }
         }
       }),
     ],
     content,
-    onCreate: ({ editor }) => {
+    onCreate: async ({ editor }) => {
       console.log('Editor Created with context:', jobDescription);
+    
       if (!hasInitializedRef.current) {
-        setTimeout(() => {
-          editor.commands.loadAiSuggestions();
-        }, 1000);
-      }
-    },
-    onUpdate: ({ editor }) => {
-      onChange(editor.getHTML());
-      setCharacterCount({
-        characters: editor.storage.characterCount.characters(),
-        words: editor.storage.characterCount.words(),
-      });
+        hasInitializedRef.current = true;
+    
+        try {
+          const response = await fetch('/api/suggestions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ resumeHtml: editor.getHTML(), jobDescription }),
+          });
+    
+          const data = await response.json();
+          console.log('Initial suggestions received:', data);
+          
+          // Format properly for TipTap
+          const suggestions = data?.content?.items || [];
 
-      const storage = editor.storage.aiSuggestion;
-      if (storage) {
-        const suggestions = storage.getSuggestions?.();
-        console.log('AI Suggestion State:', {
-          suggestions: suggestions?.length || 0,
-          decorations: storage.decorations?.length || 0,
-          isLoading: storage.isLoading,
-          error: storage.error,
-          rawSuggestions: suggestions
-        });
+          if (Array.isArray(suggestions) && suggestions.length > 0) {
+            const normalizedSuggestions = suggestions.map((s) => {
+              // Find a matching rule or use default
+              const matchingRule = rules.find(r => 
+                r.id === s.category || 
+                r.metadata?.category === s.category
+              ) || rules[0] || {
+                id: 'default',
+                title: 'Improvement',
+                prompt: '',
+                color: '#00B8D9',
+                backgroundColor: '#E6FCFF'
+              };
+              
+              // Find the exact text in the document to get the correct ranges
+              const deleteText = s.deleteText;
+              let foundRange = null;
+              
+              // Find the text in the document
+              editor.state.doc.descendants((node, pos) => {
+                if (node.isText && node.text?.includes(deleteText)) {
+                  const start = pos + node.text.indexOf(deleteText);
+                  foundRange = { from: start, to: start + deleteText.length };
+                  return false; // Stop traversal
+                }
+                return true; // Continue traversal
+              });
+              
+              return {
+                id: s.id,
+                deleteText: s.deleteText,
+                replacementOptions: s.replacementOptions.map(opt => ({
+                  id: opt.id,
+                  addText: opt.addText,
+                  reasoning: opt.reasoning || 'Improves content',
+                  metadata: {
+                    category: opt.category || 'general'
+                  }
+                })),
+                rule: matchingRule,
+                deleteRange: foundRange || { from: 0, to: 0 },
+                deleteSlice: null,
+                isRejected: false,
+                metadata: {
+                  category: s.category || 'general'
+                }
+              };
+            });
+
+            console.log('Setting initial suggestions:', normalizedSuggestions);
+            
+            // Set suggestions directly in the editor
+            editor.commands.setAiSuggestions(normalizedSuggestions);
+
+            // After setting initial suggestions
+            setTimeout(() => {
+              console.log('Triggering loadAiSuggestions with', normalizedSuggestions.length, 'suggestions');
+              editor.commands.loadAiSuggestions();
+              
+              // Log the editor state after loading
+              setTimeout(() => {
+                console.log('Editor state after loading suggestions:', {
+                  hasAiStorage: !!editor.storage.aiSuggestion,
+                  suggestions: editor.storage.aiSuggestion?.getSuggestions?.(),
+                  decorations: editor.storage.aiSuggestion?.decorations,
+                  view: editor.view
+                });
+              }, 100);
+            }, 500);
+          } else {
+            console.warn('No AI suggestions returned.');
+          }
+        } catch (err) {
+          console.error('❌ Failed to preload suggestions:', err);
+        }
       }
-    },
-    editorProps: {
-      attributes: {
-        class: 'prose prose-sm sm:prose-base lg:prose-lg xl:prose-2xl max-w-none focus:outline-none min-h-[500px] p-4 prose-headings:font-bold prose-h1:text-3xl prose-h2:text-2xl prose-h3:text-xl prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-1',
-      },
     },
   });
 
@@ -402,10 +503,97 @@ export default function ResumeEditor({ content, onChange, jobDescription }: Resu
     }
   }, [editor, content]);
 
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
     if (editor) {
       shouldRefreshRef.current = true;
-      editor.commands.loadAiSuggestions();
+      try {
+        setIsLoading(true);
+        console.log('Manually refreshing suggestions...');
+        
+        // Manually fetch new suggestions
+        const response = await fetch('/api/suggestions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            resumeHtml: editor.getHTML(),
+            jobDescription,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch suggestions: ${response.status}`);
+        }
+
+        const data = await response.json();
+        
+        if (data?.content?.items?.length > 0) {
+          // Format suggestions for TipTap
+          const suggestions = data.content.items.map(item => {
+            // Find the exact text in the document to get the correct ranges
+            const deleteText = item.deleteText;
+            let foundRange = null;
+            
+            // Find the text in the document
+            editor.state.doc.descendants((node, pos) => {
+              if (node.isText && node.text?.includes(deleteText)) {
+                const start = pos + node.text.indexOf(deleteText);
+                foundRange = { from: start, to: start + deleteText.length };
+                return false; // Stop traversal
+              }
+              return true; // Continue traversal
+            });
+            
+            const matchingRule = rules.find(r => 
+              r.id === item.category || 
+              r.metadata?.category === item.category
+            ) || rules[0];
+            
+            return {
+              id: item.id,
+              deleteText: item.deleteText,
+              replacementOptions: item.replacementOptions.map(opt => ({
+                id: opt.id,
+                addText: opt.addText,
+                reasoning: opt.reasoning || 'Improves content',
+                metadata: {
+                  category: opt.category || 'general'
+                }
+              })),
+              rule: matchingRule,
+              deleteRange: foundRange || { from: 0, to: 0 },
+              deleteSlice: null,
+              isRejected: false,
+              metadata: {
+                category: item.category || 'general'
+              }
+            };
+          });
+          
+          // Set the suggestions
+          console.log('Setting refreshed suggestions:', suggestions);
+          editor.commands.setAiSuggestions(suggestions);
+          
+          // After setting initial suggestions
+          setTimeout(() => {
+            console.log('Triggering loadAiSuggestions with', suggestions.length, 'suggestions');
+            editor.commands.loadAiSuggestions();
+            
+            // Log the editor state after loading
+            setTimeout(() => {
+              console.log('Editor state after refreshing suggestions:', {
+                hasAiStorage: !!editor.storage.aiSuggestion,
+                suggestions: editor.storage.aiSuggestion?.getSuggestions?.(),
+                decorations: editor.storage.aiSuggestion?.decorations,
+                view: editor.view
+              });
+            }, 100);
+          }, 100);
+        }
+      } catch (error) {
+        console.error('Failed to refresh suggestions:', error);
+      } finally {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -416,6 +604,66 @@ export default function ResumeEditor({ content, onChange, jobDescription }: Resu
   const handleExport = () => {
     setIsLoading(true);
     editor.chain().exportDocx().run();
+  };
+
+  const apply = (id: string) => {
+    console.log('Applying suggestion:', id);
+    try {
+      const suggestion = editor.storage.aiSuggestion?.getSuggestion(id);
+      if (!suggestion) {
+        console.error('Suggestion not found:', id);
+        return;
+      }
+      
+      // Get the editor state and document
+      const { state } = editor.view;
+      const { doc } = state;
+      
+      // Find the exact text in the document
+      const deleteText = suggestion.deleteText;
+      let foundRange = null;
+      
+      // Search the document more carefully for the text
+      doc.forEach((node, offset) => {
+        if (node.isText && node.text.includes(deleteText)) {
+          const start = offset + node.text.indexOf(deleteText);
+          foundRange = { from: start, to: start + deleteText.length };
+        }
+      });
+      
+      if (!foundRange && suggestion.deleteRange) {
+        foundRange = suggestion.deleteRange;
+      }
+      
+      if (!foundRange) {
+        console.error('Could not find text to replace:', deleteText);
+        return;
+      }
+      
+      // Get the replacement text
+      const replacementOption = suggestion.replacementOptions[0];
+      if (!replacementOption) {
+        console.error('No replacement option found for suggestion:', id);
+        return;
+      }
+      
+      const addText = replacementOption.addText;
+      
+      // Apply the replacement
+      editor.chain()
+        .focus()
+        .insertContentAt(foundRange, addText)
+        .run();
+        
+      console.log('Successfully applied suggestion:', {
+        id,
+        deleteText,
+        addText,
+        range: foundRange
+      });
+    } catch (err) {
+      console.error('Error applying suggestion:', err);
+    }
   };
 
   return (

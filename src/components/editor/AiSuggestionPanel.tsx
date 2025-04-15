@@ -8,25 +8,16 @@ import '@/components/suggestions/styles.scss'
 import debounce from 'lodash/debounce'
 import type { AiSuggestionRule } from '@tiptap-pro/extension-ai-suggestion'
 
-// Extend the Editor events type
-declare module '@tiptap/core' {
-  interface Commands<ReturnType> {
-    aiSuggestion: {
-      loadAiSuggestions: (rules?: AiSuggestionRule[]) => ReturnType
-      loadAiSuggestionsDebounced: (rules?: AiSuggestionRule[]) => ReturnType
-      applyAiSuggestion: (attrs: { suggestionId: string }) => ReturnType
-      rejectAiSuggestion: (id: string) => ReturnType
-      applyAllAiSuggestions: () => ReturnType
-      setAiSuggestionContext: (context: string) => ReturnType
-    }
-  }
-}
-
+// These types should match the TipTap extension's types as closely as possible
+// without extending the type system via declaration merging
 interface ReplacementOption {
   id: string
   addText: string
   reasoning?: string
   category?: string
+  metadata?: {
+    category?: string
+  }
 }
 
 interface Suggestion {
@@ -36,9 +27,25 @@ interface Suggestion {
   context?: string
   category?: string
   deleteRange?: { from: number; to: number }
+  deleteSlice?: any
+  rule?: any
   isSelected?: boolean
   isRejected?: boolean
+  metadata?: {
+    category?: string
+  }
 }
+
+// Let's update the mapping of categories for display
+const CATEGORY_LABELS = {
+  'action-verbs': 'Action Verbs',
+  'quantify-achievements': 'Quantify Achievements',
+  'technical-skills': 'Technical Skills', 
+  'industry-keywords': 'Industry Keywords',
+  'concise-language': 'Concise Language',
+  'accomplishment-focus': 'Focus on Accomplishments',
+  'general': 'General Improvements'
+};
 
 interface AiSuggestionPanelProps {
   editor: Editor | null
@@ -81,62 +88,100 @@ export default function AiSuggestionPanel({ editor }: AiSuggestionPanelProps) {
 
     // Define update handler
     const updateHandler = () => {
-      const aiStorage = editor.storage.aiSuggestion;
-      if (aiStorage) {
+      try {
+        const aiStorage = editor.storage.aiSuggestion;
+        
+        if (!aiStorage) {
+          console.log('No AI storage available');
+          setLoading(false);
+          return;
+        }
+
         // Log the raw storage state
         console.log('AI Storage State:', {
-          raw: aiStorage,
+          storage: aiStorage,
           suggestions: aiStorage.getSuggestions?.(),
           decorations: aiStorage.decorations,
           loading: aiStorage.isLoading,
+          hasDecorations: !!aiStorage.decorations && aiStorage.decorations.size > 0
         });
 
-        // Get suggestions using the documented method
-        const storageSuggestions = aiStorage.getSuggestions?.() || [];
-        console.log('Raw suggestions from storage:', storageSuggestions);
+        // Get suggestions from storage
+        let storageSuggestions = [];
         
-        // Process suggestions to ensure proper structure
-        const processedSuggestions = storageSuggestions.map(s => {
-          // Ensure we have valid suggestion data
-          if (!s || !s.deleteText) {
-            console.log('Invalid suggestion:', s);
-            return null;
-          }
+        // Check all possible ways to access suggestions
+        if (typeof aiStorage.getSuggestions === 'function') {
+          storageSuggestions = aiStorage.getSuggestions() || [];
+        } else if (Array.isArray(aiStorage.suggestions)) {
+          storageSuggestions = aiStorage.suggestions;
+        } else if (Array.isArray(aiStorage.raw?.suggestions)) {
+          storageSuggestions = aiStorage.raw.suggestions;
+        }
 
-          // Ensure replacementOptions is always an array
-          const options = Array.isArray(s.replacementOptions) 
-            ? s.replacementOptions 
-            : s.replacementOptions ? [s.replacementOptions] : [];
-
-          // Add required properties to each option
-          const processedOptions = options.map(opt => ({
-            id: opt.id || Math.random().toString(36).substr(2, 9),
-            addText: opt.addText || '',
-            reasoning: opt.reasoning || 'Improves clarity and professionalism',
-            category: opt.metadata?.category || s.metadata?.category || 'General Improvements'
-          }));
-
-          return {
-            id: s.id,
-            deleteText: s.deleteText,
-            replacementOptions: processedOptions,
-            context: s.context || getFullSentenceContext(s.deleteText, aiStorage),
-            category: s.metadata?.category || 'General Improvements',
-            deleteRange: s.deleteRange,
-            isSelected: false,
-            isRejected: false
-          };
-        }).filter(Boolean); // Remove any null suggestions
-
-        console.log('Processed Suggestions:', processedSuggestions);
-        
-        // Only update state if we have valid suggestions
-        if (processedSuggestions.length > 0) {
-          setSuggestions(processedSuggestions);
+        if (storageSuggestions.length > 0) {
+          console.log('Raw suggestions found in storage:', storageSuggestions.length, 'suggestions');
         }
         
-        setLoading(aiStorage.isLoading || false);
+        // Process suggestions to ensure proper structure
+        const processedSuggestions = storageSuggestions
+          .filter(s => s !== null && typeof s === 'object')
+          .map(s => {
+            // Ensure we have valid suggestion data
+            if (!s.deleteText && typeof s.deleteText !== 'string') {
+              console.log('Invalid suggestion (missing deleteText):', s);
+              return null;
+            }
+
+            // Ensure replacementOptions is always an array
+            const options = Array.isArray(s.replacementOptions) 
+              ? s.replacementOptions 
+              : s.replacementOptions ? [s.replacementOptions] : [];
+
+            // Add required properties to each option
+            const processedOptions = options.map(opt => ({
+              id: opt.id || Math.random().toString(36).substr(2, 9),
+              addText: opt.addText || '',
+              reasoning: opt.reasoning || 'Improves clarity and professionalism',
+              category: opt.metadata?.category || opt.category || s.metadata?.category || s.category || 'General Improvements'
+            }));
+
+            return {
+              id: s.id || Math.random().toString(36).substr(2, 9),
+              deleteText: s.deleteText,
+              replacementOptions: processedOptions.length > 0 ? processedOptions : [{
+                id: `default-${s.id}`,
+                addText: s.deleteText,
+                reasoning: 'No specific improvements suggested',
+                category: 'General Improvements'
+              }],
+              context: s.context || getFullSentenceContext(s.deleteText, aiStorage),
+              category: s.metadata?.category || s.category || 'General Improvements',
+              deleteRange: s.deleteRange,
+              deleteSlice: s.deleteSlice,
+              rule: s.rule,
+              isSelected: false,
+              isRejected: false,
+              metadata: {
+                category: s.metadata?.category || s.category || 'General Improvements'
+              }
+            };
+          }).filter(Boolean); // Remove any null suggestions
+
+        if (processedSuggestions.length > 0) {
+          console.log('Processed Suggestions:', processedSuggestions.length, 'suggestions');
+        }
+        
+        // Only update state if we have valid suggestions or if we've transitioned from loading to not loading
+        if (processedSuggestions.length > 0 || lastSuggestionCount.current > 0 || aiStorage.isLoading === false) {
+          setSuggestions(processedSuggestions);
+          lastSuggestionCount.current = processedSuggestions.length;
+        }
+        
+        setLoading(aiStorage.isLoading === true);
         setError(aiStorage.error || null);
+      } catch (err) {
+        console.error('Error processing suggestions:', err);
+        setLoading(false);
       }
     };
 
@@ -182,45 +227,119 @@ export default function AiSuggestionPanel({ editor }: AiSuggestionPanelProps) {
 
   // Group suggestions by category
   const groupedSuggestions = suggestions.reduce((acc, s) => {
-    const category = s.category || 'General Improvements'
-    if (!acc[category]) {
-      acc[category] = []
+    // Get the category from either metadata or directly from the suggestion
+    const category = s.metadata?.category || s.category || s.rule?.id || 'general';
+    
+    // Get the display label for the category
+    const displayCategory = CATEGORY_LABELS[category as keyof typeof CATEGORY_LABELS] || category || 'General Improvements';
+    
+    if (!acc[displayCategory]) {
+      acc[displayCategory] = [];
     }
-    acc[category].push(s)
-    return acc
-  }, {} as Record<string, Suggestion[]>)
+    acc[displayCategory].push(s);
+    return acc;
+  }, {} as Record<string, Suggestion[]>);
 
   const apply = (id: string) => {
-    console.log('Applying suggestion:', id)
+    console.log('Applying suggestion:', id);
     try {
-      processingRef.current = true
-      editor?.commands.applyAiSuggestion({ suggestionId: id })
-      // Update local state immediately
-      setSuggestions(prev => 
-        prev.filter(s => s.id !== id)
-      )
+      processingRef.current = true;
+      
+      // Get the suggestion from our state
+      const suggestion = suggestions.find(s => s.id === id);
+      if (!suggestion) {
+        console.error('Suggestion not found in local state:', id);
+        return;
+      }
+      
+      // Get the editor state and document
+      const { state } = editor.view;
+      const { doc } = state;
+      
+      // Find the exact text in the document
+      const deleteText = suggestion.deleteText;
+      let foundRange = null;
+      
+      // Try to find the exact text first
+      doc.nodesBetween(0, doc.content.size, (node, pos) => {
+        if (node.isText && node.text && node.text.includes(deleteText)) {
+          const start = pos + node.text.indexOf(deleteText);
+          foundRange = { from: start, to: start + deleteText.length };
+          return false; // Stop searching once found
+        }
+        return true; // Continue searching
+      });
+      
+      // If not found, try a fuzzy match or partial match
+      if (!foundRange) {
+        // Try to match just the first 15-20 chars of the text
+        const shortenedText = deleteText.substring(0, Math.min(20, deleteText.length));
+        if (shortenedText.length > 10) {
+          doc.nodesBetween(0, doc.content.size, (node, pos) => {
+            if (node.isText && node.text && node.text.includes(shortenedText)) {
+              // Find where the short match starts
+              const matchIndex = node.text.indexOf(shortenedText);
+              const start = pos + matchIndex;
+              // Either use the actual text length if it fully matches, or just the shortened length
+              const end = node.text.substring(matchIndex).startsWith(deleteText) 
+                ? start + deleteText.length
+                : start + shortenedText.length;
+              
+              foundRange = { from: start, to: end };
+              console.log('Found partial match for text', { shortenedText, fullText: deleteText, match: node.text.substring(matchIndex, matchIndex + 30) });
+              return false;
+            }
+            return true;
+          });
+        }
+      }
+      
+      if (!foundRange) {
+        console.error('Could not find text to replace:', deleteText);
+        setError(new Error(`Could not find text to replace. It may have been modified.`));
+        return;
+      }
+      
+      // Get the replacement text from the first option
+      const replacementOption = suggestion.replacementOptions?.[0];
+      if (!replacementOption || !replacementOption.addText) {
+        console.error('No valid replacement option found for suggestion:', id);
+        setError(new Error('No valid replacement found'));
+        return;
+      }
+      
+      const addText = replacementOption.addText;
+      
+      // Apply the replacement using the transaction API directly
+      const tr = editor.view.state.tr;
+      tr.delete(foundRange.from, foundRange.to);
+      tr.insert(foundRange.from, editor.view.state.schema.text(addText));
+      editor.view.dispatch(tr);
+      
+      // Update local state to remove the suggestion
+      setSuggestions(prev => prev.filter(s => s.id !== id));
     } catch (err) {
-      console.error('Error applying suggestion:', err)
-      setError(err instanceof Error ? err : new Error('Failed to apply suggestion'))
+      console.error('Error applying suggestion:', err);
+      setError(err instanceof Error ? err : new Error('Failed to apply suggestion'));
     } finally {
-      processingRef.current = false
+      processingRef.current = false;
     }
   }
   
   const reject = (id: string) => {
-    console.log('Rejecting suggestion:', id)
+    console.log('Rejecting suggestion:', id);
     try {
-      processingRef.current = true
-      editor?.commands.rejectAiSuggestion(id)
-      // Update local state immediately
+      processingRef.current = true;
+      
+      // Update local state to mark the suggestion as rejected
       setSuggestions(prev =>
         prev.map(s => s.id === id ? { ...s, isRejected: true } : s)
-      )
+      );
     } catch (err) {
-      console.error('Error rejecting suggestion:', err)
-      setError(err instanceof Error ? err : new Error('Failed to reject suggestion'))
+      console.error('Error rejecting suggestion:', err);
+      setError(err instanceof Error ? err : new Error('Failed to reject suggestion'));
     } finally {
-      processingRef.current = false
+      processingRef.current = false;
     }
   }
 
@@ -254,15 +373,6 @@ export default function AiSuggestionPanel({ editor }: AiSuggestionPanelProps) {
               aria-label="Refresh suggestions"
             >
               Refresh
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => editor.commands.applyAllAiSuggestions()}
-              disabled={suggestions.length === 0 || loading}
-              aria-label="Apply all suggestions"
-            >
-              Apply All
             </Button>
           </div>
         </div>

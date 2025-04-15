@@ -7,7 +7,7 @@ export const aiConfig = {
   reloadOnUpdate: false,
   debounceTimeout: 2000,
   minContentLength: 100,
-  maxSuggestionsPerRule: 1,
+  maxSuggestionsPerRule: 3,
   batchSize: 1000,
 };
 
