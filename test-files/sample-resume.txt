@@ -1,0 +1,26 @@
+
+John Doe
+john.doe@example.com | (123) 456-7890 | linkedin.com/in/johndoe
+
+SUMMARY
+Experienced software engineer with a passion for creating elegant solutions.
+
+EXPERIENCE
+Senior Software Engineer
+TechCorp Inc. | 2018 - Present
+• Developed and maintained cloud-based applications
+• Led a team of 5 developers on a major project
+• Reduced system latency by 40% through optimizations
+
+Software Developer
+Startup Labs | 2015 - 2018
+• Built RESTful APIs for mobile applications
+• Implemented CI/CD pipelines
+
+EDUCATION
+Bachelor of Science in Computer Science
+University of Technology | 2011 - 2015
+
+SKILLS
+JavaScript, TypeScript, React, Node.js, Python, AWS, Docker, Kubernetes
+  

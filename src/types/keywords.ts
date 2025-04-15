@@ -4,6 +4,8 @@ export interface KeywordMatch {
   matchType: 'direct' | 'synonym' | 'semantic' | 'none';
   confidence: number;
   explanation: string;
+  importance?: 'required' | 'preferred';
+  context?: string;
 }
 
 export interface ExtractedKeyword {

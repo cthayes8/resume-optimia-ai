@@ -1,0 +1,148 @@
+🔧 Phase 1: Core Refactor – Resume Parsing & Chunking
+Goal: Replace unreliable smartChunkHTML with robust section-based parsing from OpenResume.
+
+Tasks:
+ Integrate OpenResume Parser
+
+Extract core parsing logic from open-resume (TS-based) into your backend.
+
+Refactor resume-parser.ts to:
+
+Detect section headers using font styles, caps, and keywords.
+
+Output structured JSON: [{ section: "Experience", bullets: [...] }, ...].
+
+ Normalize Section Names
+
+Standardize internal section naming using enums (e.g., EXPERIENCE, EDUCATION) to match UI and AI prompts.
+
+ Preserve Original Order & Formatting
+
+Store metadata like line numbers or block IDs for later matching.
+
+Deliverables:
+
+New parseResume module.
+
+Updated parsing API route.
+
+JSON output with reliable structure.
+
+🧠 Phase 2: Improved Keyword & ATS Matching
+Goal: Provide smarter keyword extraction and resume-vs-JD matching using semantic tools.
+
+Tasks:
+ Extract Top Keywords from Job Description
+
+Use OpenAI or SpaCy to return a list of 10–20 relevant keywords/skills.
+
+Cache them per JD for reuse.
+
+ Compare Resume to JD Keywords
+
+Highlight missing keywords in each section.
+
+Calculate match score (e.g., % of keywords present).
+
+ Display ATS Score in UI
+
+Components: Keyword Match %, Structure Score, Format Check.
+
+Optional: Add a backend microservice (Python + FastAPI) using resume-matcher logic for deeper similarity scoring.
+
+Deliverables:
+
+analyze-keywords.ts upgrade.
+
+match-resume-to-jd.ts endpoint.
+
+ats-score component in dashboard.
+
+🤖 Phase 3: High-Quality AI Suggestions
+Goal: Use better prompts, formatting, and response handling to improve suggestion quality.
+
+Tasks:
+ Revamp Suggestion Prompts
+
+Create prompt templates per section type with few-shot examples.
+
+Use bullet-level precision in prompts.
+
+Add context: section + JD keywords.
+
+ Request Structured Output
+
+Ask OpenAI to return JSON: { original, improved, section, bulletId }
+
+Validate JSON with schema check.
+
+ Retry on Failures + Logging
+
+Add retry logic for malformed responses.
+
+Log bad outputs for training or manual review.
+
+Deliverables:
+
+suggest-improvements.ts module.
+
+Unified JSON schema for suggestions.
+
+Prompt templates stored centrally for reuse/tuning.
+
+⚡ Phase 4: Performance + Reliability
+Goal: Speed up processing, avoid timeouts, and support concurrency.
+
+Tasks:
+ Parallelize Suggestion Calls
+
+Use Promise.allSettled() to process each section concurrently.
+
+Cap concurrent calls to 5–10 to stay within rate limits.
+
+ Implement Streaming / Progressive UI
+
+Stream suggestions as they complete.
+
+Use loading skeletons per section.
+
+ Introduce Caching
+
+Cache identical resume+JD pair results (e.g., via Supabase or Redis).
+
+Avoid redundant calls if resume hasn't changed.
+
+Deliverables:
+
+New suggestion-runner.ts.
+
+Streaming suggestion UI in SuggestionPanel.
+
+Basic cache layer.
+
+🧬 Phase 5: Robust Application of Suggestions
+Goal: Apply suggestions reliably with no text-breakage or mismatches.
+
+Tasks:
+ Assign Stable IDs to Bullets
+
+During parsing, give each bullet a unique bulletId.
+
+ Use ID-based Matching in TipTap
+
+When applying suggestions, replace node by bulletId not raw text.
+
+Fallback: use diff-match-patch for fuzzy patching.
+
+ Post-Apply Validation
+
+After applying suggestion, re-validate structure (e.g., no section lost).
+
+Deliverables:
+
+Updated TipTap Editor config.
+
+Bullet matching service.
+
+Diffing logic for fallback.
+

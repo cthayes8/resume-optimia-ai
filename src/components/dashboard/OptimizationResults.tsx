@@ -230,12 +230,27 @@ export default function OptimizationResults({
                         className={`px-2 py-1 text-sm ${analysis.found ? 'bg-green-500/20 text-green-700 hover:bg-green-500/30' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
                       >
                         {analysis.keyword}
+                        {analysis.importance === 'required' && <span className="ml-1 text-xs">*</span>}
                       </Badge>
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p className="text-xs">
-                        {analysis.found ? 'Found in resume' : 'Not found in resume'}
-                      </p>
+                      <div className="space-y-1 max-w-xs">
+                        <p className="text-xs font-medium">
+                          {analysis.found ? 'Found in resume' : 'Not found in resume'} 
+                          {analysis.matchType === 'synonym' && ' (via synonym)'}
+                          {analysis.matchType === 'semantic' && ' (semantic match)'}
+                        </p>
+                        {analysis.importance && (
+                          <p className="text-xs opacity-80">
+                            {analysis.importance === 'required' ? 'Required' : 'Preferred'}
+                          </p>
+                        )}
+                        {analysis.context && (
+                          <p className="text-xs italic opacity-70 border-t border-gray-200 pt-1 mt-1">
+                            "{analysis.context}"
+                          </p>
+                        )}
+                      </div>
                     </TooltipContent>
                   </Tooltip>
                 ))}

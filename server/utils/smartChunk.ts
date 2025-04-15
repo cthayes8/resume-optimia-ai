@@ -1,168 +1,93 @@
+import { ChatCompletionMessageParam } from 'openai/resources';
+
 /**
  * Smart HTML chunking for resume sections
  * Inspired by Open-Resume's PDF parsing algorithm
  */
-function smartChunkHTML(html: string, maxWordsPerChunk = 300): { id: string; html: string }[] {
-  // Step 1: Extract potential section headers by looking for formatting patterns
-  // This regex looks for common section header patterns in HTML
-  const sectionHeaderPattern = /<(?:h[1-6]|strong|b|div\s+class="[^"]*heading[^"]*"|span\s+class="[^"]*heading[^"]*")(?:\s+[^>]*)?>\s*(.*?)\s*<\/(?:h[1-6]|strong|b|div|span)>/gi;
-  
-  // Common resume section titles to detect
-  const sectionTitles = [
-    "SUMMARY", "PROFILE", "OBJECTIVE", 
-    "EXPERIENCE", "EMPLOYMENT", "WORK HISTORY", "PROFESSIONAL EXPERIENCE",
-    "EDUCATION", "ACADEMIC BACKGROUND", "QUALIFICATIONS",
-    "SKILLS", "TECHNICAL SKILLS", "COMPETENCIES", "EXPERTISE",
-    "PROJECTS", "PORTFOLIO", "ACHIEVEMENTS",
-    "CERTIFICATIONS", "LICENSES", "CREDENTIALS",
-    "ADDITIONAL", "ACTIVITIES", "INTERESTS", "LANGUAGES", "VOLUNTEER",
-    "AWARDS", "HONORS", "PUBLICATIONS", "REFERENCES"
+function smartChunkHTML(html: string, maxWordsPerChunk = 500): { id: string; html: string }[] {
+  // Step 1: Extract potential bullets and paragraphs directly
+  // Use a more aggressive approach to find content blocks
+
+  // First, try to find unordered lists (<ul> with <li> elements)
+  const listItemRegex = /<li[^>]*>([\s\S]*?)<\/li>/gi;
+  let listItems: { id: string; html: string }[] = [];
+  let listMatch;
+  let id = 0;
+
+  while ((listMatch = listItemRegex.exec(html)) !== null) {
+    const content = listMatch[0];
+    if (content && content.replace(/<[^>]*>/g, '').trim().length > 0) {
+      listItems.push({
+        id: `bullet-${id++}`,
+        html: content
+      });
+    }
+  }
+
+  // If we found list items, return them directly
+  if (listItems.length > 0) {
+    console.log(`Found ${listItems.length} list items via <li> tags`);
+    return listItems;
+  }
+
+  // Try to find paragraphs separated by line breaks or paragraph tags
+  const paragraphSeparators = [
+    /<p[^>]*>[\s\S]*?<\/p>/gi,              // <p> tags
+    /<div[^>]*>[\s\S]*?<\/div>/gi,          // <div> tags
+    /(?:<br\s*\/?>\s*){2,}|<\/p>\s*<p[^>]*>/gi,  // Multiple <br> tags or paragraph boundaries
+    /\n\s*\n/g                              // Double line breaks
   ];
+
+  // Extract paragraphs using separators
+  let allParagraphs: { id: string; html: string }[] = [];
   
-  // Find potential section headers
-  let match;
-  
-  // First pass - identify potential section headers based on HTML formatting
-  const headerMatches: {index: number, title: string, match: string}[] = [];
-  while ((match = sectionHeaderPattern.exec(html)) !== null) {
-    const fullMatch = match[0];
-    let title = match[1].replace(/<[^>]*>/g, '').trim();
+  for (const separator of paragraphSeparators) {
+    // Get all content chunks based on this separator
+    const parts = html.split(separator).filter(part => part.trim().length > 0);
     
-    // Remove any HTML tags that might be inside the title
-    title = title.replace(/<[^>]*>/g, '');
-    
-    // Ignore empty or very short titles
-    if (title.length < 2) continue;
-    
-    // Convert to uppercase for comparison
-    const uppercaseTitle = title.toUpperCase();
-    
-    // Score the potential header based on various factors
-    let score = 0;
-    
-    // 1. Is it fully uppercase?
-    if (title === uppercaseTitle) score += 5;
-    
-    // 2. Contains a known section title?
-    if (sectionTitles.some(sectionTitle => 
-      uppercaseTitle.includes(sectionTitle) || 
-      sectionTitle.includes(uppercaseTitle))) {
-      score += 10;
-    }
-    
-    // 3. Is it bold or in a heading tag?
-    if (fullMatch.match(/<(h[1-6]|strong|b)/i)) score += 3;
-    
-    // 4. Is it short (typical for section titles)?
-    if (title.length < 15) score += 2;
-    
-    // Only consider as section header if score is high enough
-    if (score >= 5) {
-      headerMatches.push({
-        index: match.index,
-        title: title,
-        match: fullMatch
-      });
-    }
-  }
-  
-  // Sort by position in document
-  headerMatches.sort((a, b) => a.index - b.index);
-  
-  // Extract the content between headers
-  const sections: { title: string, content: string, originalIndex: number }[] = [];
-  for (let i = 0; i < headerMatches.length; i++) {
-    const currentHeader = headerMatches[i];
-    const nextHeader = headerMatches[i + 1];
-    
-    let sectionContent;
-    if (nextHeader) {
-      sectionContent = html.substring(
-        currentHeader.index, 
-        nextHeader.index
-      );
-    } else {
-      sectionContent = html.substring(currentHeader.index);
-    }
-    
-    sections.push({
-      title: currentHeader.title,
-      content: sectionContent,
-      originalIndex: currentHeader.index
-    });
-  }
-  
-  // Handle the case where there's content before the first section header
-  if (headerMatches.length > 0 && headerMatches[0].index > 0) {
-    const initialContent = html.substring(0, headerMatches[0].index);
-    // Only add if it contains meaningful content
-    if (initialContent.replace(/<[^>]*>/g, '').trim().length > 10) {
-      sections.unshift({
-        title: "PROFILE",
-        content: initialContent,
-        originalIndex: 0
-      });
-    }
-  }
-  
-  // If no sections were detected, treat the entire document as one chunk
-  if (sections.length === 0) {
-    return [{ id: 'chunk-0', html }];
-  }
-  
-  // Sort sections by their original position in the document
-  sections.sort((a, b) => a.originalIndex - b.originalIndex);
-  
-  // Now create chunks, respecting section boundaries
-  const chunks: { id: string; html: string }[] = [];
-  let chunkIndex = 0;
-  
-  for (const section of sections) {
-    // Skip empty sections
-    if (!section.content.trim()) continue;
-    
-    // For smaller sections, keep them as a single chunk
-    if (countWords(section.content) <= maxWordsPerChunk) {
-      chunks.push({ id: `chunk-${chunkIndex++}`, html: section.content });
-      continue;
-    }
-    
-    // For larger sections, split intelligently
-    const paragraphs = section.content.split(/<\/p>|<\/li>|<\/div>/).map(p => {
-      // Re-add the closing tag if it was removed in the split
-      if (!p.endsWith('</p>') && !p.endsWith('</li>') && !p.endsWith('</div>')) {
-        if (p.includes('<p')) return p + '</p>';
-        if (p.includes('<li')) return p + '</li>';
-        if (p.includes('<div')) return p + '</div>';
-      }
-      return p;
-    }).filter(p => p.trim().length > 0);
-    
-    let currentChunk = '';
-    let wordCount = 0;
-    
-    for (const para of paragraphs) {
-      const paraWords = countWords(para);
+    // If we found a reasonable number of chunks, process them
+    if (parts.length >= 2) {
+      allParagraphs = parts.map((part, index) => ({
+        id: `para-${index}`,
+        html: part.trim()
+      }));
       
-      if (wordCount + paraWords > maxWordsPerChunk && currentChunk.length > 0) {
-        // Current paragraph would exceed the limit, finish current chunk
-        chunks.push({ id: `chunk-${chunkIndex++}`, html: currentChunk });
-        currentChunk = para;
-        wordCount = paraWords;
-      } else {
-        // Add paragraph to current chunk
-        currentChunk += para;
-        wordCount += paraWords;
+      console.log(`Found ${allParagraphs.length} paragraphs via separator`);
+      
+      // Exit early if we found enough chunks
+      if (allParagraphs.length >= 3) {
+        return allParagraphs;
       }
     }
-    
-    // Add the last chunk if it has content
-    if (currentChunk.length > 0) {
-      chunks.push({ id: `chunk-${chunkIndex++}`, html: currentChunk });
-    }
   }
-  
-  return chunks;
+
+  // If we found at least some paragraphs, use them
+  if (allParagraphs.length > 0) {
+    return allParagraphs;
+  }
+
+  // Last resort: just split by newlines or sentences
+  const lines = html
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n')
+    .replace(/<\/div>/gi, '\n')
+    .replace(/<\/li>/gi, '\n')
+    .split(/\n|\.(?=\s|$)/)
+    .filter(line => {
+      const textOnly = line.replace(/<[^>]*>/g, '').trim();
+      return textOnly.length > 0;
+    });
+
+  if (lines.length > 0) {
+    console.log(`Last resort: Found ${lines.length} lines by splitting text`);
+    return lines.map((line, index) => ({
+      id: `line-${index}`,
+      html: line.trim()
+    }));
+  }
+
+  // If nothing else worked, treat the entire content as one chunk
+  return [{ id: 'chunk-0', html }];
 }
 
 /**
@@ -220,8 +145,8 @@ function detectSectionType(html: string): string {
   const isHeading = html.includes('<h1') || html.includes('<h2') || html.includes('<h3') || html.includes('<h4') || html.includes('<h5') || html.includes('<h6');
   const isAllCaps = plainText === plainText.toUpperCase() && plainText.length > 3;
   
-  // Track scores for each section type
-  const sectionScores = {
+  // Track scores for each section type with proper index signature
+  const sectionScores: { [key: string]: number } = {
     'SUMMARY': 0,
     'EXPERIENCE': 0,
     'EDUCATION': 0,
