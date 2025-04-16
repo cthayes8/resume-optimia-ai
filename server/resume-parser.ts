@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import OpenAI from 'openai';
 
 // Define section types as enum for consistency
 export enum SectionType {
@@ -197,7 +198,7 @@ function parseHtmlResume(html: string, originalFormat: string): ParsedResume {
     hasExperience: false,
     hasEducation: false,
     hasSkills: false,
-    isAtsCompatible: true,  // Assume compatible by default
+    isAtsCompatible: true,
     originalFormat
   };
   
@@ -222,6 +223,25 @@ function parseHtmlResume(html: string, originalFormat: string): ParsedResume {
   } else {
     // Fallback: No clear headers found, try to infer sections from content
     inferSectionsFromContent(document, sections);
+  }
+  
+  // NEW: Extract simple bullets as a fallback if regular extraction found very few
+  const simpleBullets = extractSimpleBullets(html);
+  console.log(`🔍 Simple extraction found ${simpleBullets.length} content bullets`);
+  
+  // If we found very few bullets with the regular approach, use the simple approach
+  const totalRegularBullets = sections.reduce((sum, section) => sum + section.bullets.length, 0);
+  if (totalRegularBullets < 5 && simpleBullets.length > 0) {
+    console.log(`Using ${simpleBullets.length} simply extracted bullets instead of ${totalRegularBullets} regular bullets`);
+    
+    // Create a single "EXPERIENCE" section with all the simple bullets
+    sections.push({
+      id: uuidv4(),
+      type: SectionType.EXPERIENCE,
+      title: "Experience",
+      content: "",
+      bullets: simpleBullets
+    });
   }
   
   // Step 3: Process each section to update metadata
@@ -280,9 +300,8 @@ function identifySectionHeaders(document: Document): Element[] {
   
   for (const element of Array.from(allElements)) {
     const text = element.textContent?.trim() || '';
-    
     // Skip empty or very long elements (unlikely to be headers)
-    if (!text || text.length > 50 || text.length < 2) continue;
+    if (!text || text.length > 700 || text.length < 2) continue;
     
     // Check if element contains a known section title
     const normalizedText = text.toLowerCase();
@@ -467,12 +486,12 @@ function extractBullets(
         });
       });
     }
-    // Check for paragraphs that look like bullets
+    // Check for paragraphs that look like bullets or section content
     else if (currentElement.tagName === 'P' || currentElement.tagName === 'DIV') {
       const text = currentElement.textContent?.trim() || '';
       
-      // Skip empty paragraphs or likely sub-headers
-      if (text && text.length > 2 && !isLikelySubheader(currentElement)) {
+      // Skip empty paragraphs, very short text, or likely sub-headers
+      if (text && text.length > 5 && !isLikelySubheader(currentElement)) {
         // Check if paragraph starts with a bullet character or number
         if (/^[•\-–—*⁃◦⦿⁌⁍➤➢➣➔➙➛➜➝➞➟➠➧➨➩➪➫➬➭➮➯➱➲➳➵➶➷➸➹➺]|\d+[.)]/.test(text)) {
           bullets.push({
@@ -481,8 +500,22 @@ function extractBullets(
             level: 0
           });
         }
+        // NEW LOGIC: Check if this is likely an EXPERIENCE or SKILLS bullet based on content
+        else if ((text.length > 10 && text.length < 500) && 
+                 (/^[A-Z][a-z]+|^[A-Za-z]+ed\s|^[A-Za-z]+ated\s/.test(text)) && // Starts with capitalized word or common past-tense verbs
+                 !text.includes('|') && // Not a header with pipe separators
+                 !(/^[A-Z][a-z]+ [A-Z][a-z]+$/.test(text)) && // Not just a proper name
+                 !/^(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/.test(text)) { // Not a date
+          bullets.push({
+            id: uuidv4(),
+            text,
+            level: 0
+          });
+        }
         // Or if it's not a likely header and follows a pattern of bullet-like paragraphs
-        else if (bullets.length > 0 && text.length < 200) {
+        else if (bullets.length > 0 && text.length < 500 && 
+                 !text.includes('|') && // Not a header with pipe separators 
+                 !/^[A-Z\s]+$/.test(text)) { // Not all caps (section header)
           bullets.push({
             id: uuidv4(),
             text,
@@ -633,55 +666,117 @@ function convertPlainTextToHtml(text: string): string {
   let inSection = false;
   let inList = false;
   
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (!line) {
-      // Empty line - close any open lists
-      if (inList) {
-        html += '</ul>';
-        inList = false;
-      }
-      html += '<br/>';
-      continue;
-    }
+  const BATCH_SIZE = 3; // Process 3 lines at a time
+
+  for (let i = 0; i < lines.length && !timeoutTriggered; i += BATCH_SIZE) {
+    const batch = lines.slice(i, Math.min(i + BATCH_SIZE, lines.length));
+    console.log(`Processing batch ${Math.floor(i/BATCH_SIZE) + 1}: ${batch.length} lines`);
     
-    // Check for section headers (ALL CAPS or short bold-like text)
-    if (line === line.toUpperCase() && line.length > 2 && line.length < 30) {
-      // Close any open sections or lists
-      if (inList) {
-        html += '</ul>';
-        inList = false;
-      }
-      if (inSection) {
-        html += '</div>';
-      }
-      
-      // Start a new section
-      html += `<div class="section"><h2>${line}</h2>`;
-      inSection = true;
-      continue;
-    }
+    // Process this batch in parallel
+    const batchPromises = batch.map((line, batchIndex) => {
+      return new Promise<any>(async (resolve) => {
+        try {
+          const lineIndex = i + batchIndex;
+          const lineId = `line-${lineIndex}`;
+          
+          console.log(`Processing line ${lineIndex+1}: "${line.substring(0, 40)}..."`);
+          
+          // Create a simpler prompt directly here
+          const completion = await openaiClient.chat.completions.create({
+            model: 'gpt-3.5-turbo',
+            messages: [
+              {
+                role: 'system',
+                content: `You are an expert resume improvement assistant. Enhance this single bullet point to be more impactful for a telecommunications enterprise sales role.
+
+Focus on:
+1. Using strong action verbs
+2. Quantifying achievements where possible 
+3. Incorporating relevant skills for telecom enterprise sales
+4. Making the language more concise and impactful
+
+Return a JSON object with:
+- improved: The enhanced bullet point
+- reasoning: Brief explanation of changes
+- category: One of ["action-verbs", "quantify-achievements", "technical-skills", "industry-keywords", "concise-language", "accomplishment-focus"]`
+              },
+              {
+                role: 'user',
+                content: `Improve this bullet point: "${line}"`
+              }
+            ],
+            temperature: 0.3,
+            response_format: { type: 'json_object' },
+            max_tokens: 400, // Reduced for faster processing
+          }, {
+            timeout: 6000 // 6s timeout
+          });
+          
+          const content = completion.choices[0].message.content;
+          if (!content) {
+            resolve(null);
+            return;
+          }
+          
+          // Parse the response
+          let response;
+          try {
+            response = JSON.parse(content);
+          } catch (jsonError) {
+            console.error(`JSON parsing error: ${jsonError}`);
+            // Try to recover JSON
+            const jsonMatch = content.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+              try {
+                response = JSON.parse(jsonMatch[0]);
+              } catch (e) {
+                resolve(null);
+                return;
+              }
+            } else {
+              resolve(null);
+              return;
+            }
+          }
+          
+          if (!response.improved) {
+            resolve(null);
+            return;
+          }
+          
+          // Success - add suggestion
+          const suggestion = {
+            id: lineId,
+            original: line,
+            improved: response.improved,
+            reasoning: response.reasoning || "Improved for telecommunications sales",
+            category: response.category || "accomplishment-focus"
+          };
+          
+          console.log(`✅ Generated suggestion ${lineIndex+1}`);
+          resolve(suggestion);
+        } catch (error) {
+          console.error(`Error processing line: ${error.message}`);
+          resolve(null);
+        }
+      });
+    });
     
-    // Check for bullet points
-    if (line.startsWith('•') || line.startsWith('-') || line.startsWith('*') || /^\d+\.\s/.test(line)) {
-      if (!inList) {
-        html += '<ul>';
-        inList = true;
+    // Wait for all promises in this batch
+    const batchResults = await Promise.all(batchPromises);
+    
+    // Add successful suggestions
+    batchResults.forEach(result => {
+      if (result) {
+        suggestions.push(result);
       }
-      
-      // Extract the bullet text (remove the bullet character)
-      const bulletText = line.replace(/^[•\-*]|\d+\.\s/, '').trim();
-      html += `<li>${bulletText}</li>`;
-      continue;
-    }
+    });
     
-    // Regular text
-    if (inList) {
-      html += '</ul>';
-      inList = false;
+    // Check if we should stop due to timeout
+    if (timeoutTriggered) {
+      console.log('Timeout triggered, stopping processing');
+      break;
     }
-    
-    html += `<p>${line}</p>`;
   }
   
   // Close any open tags
@@ -690,4 +785,52 @@ function convertPlainTextToHtml(text: string): string {
   
   html += '</div>';
   return html;
+}
+
+// Simple function to determine if a paragraph is a content bullet (not a header)
+function isContentBullet(text: string): boolean {
+  // Skip section headers (all caps or very short)
+  if (text === text.toUpperCase() && text.length < 30) return false;
+  
+  // Skip company names, dates, and job titles
+  if (/^[A-Z][a-z]+ (Inc|LLC|Corp|Company)|^\d{4}|^(January|February|March|April|May|June|July|August|September|October|November|December)|^Vice President|^Director|^Manager|^National/i.test(text)) return false;
+  
+  // Skip very short lines
+  if (text.length < 10) return false;
+  
+  // Skip bullets that are just awards or certifications
+  if (/^Q[1-4] 20\d{2}:|^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/.test(text)) return false;
+  
+  // Only accept paragraphs that look like accomplishment statements
+  // These typically start with a past-tense verb or have specific patterns
+  return (
+    /^[A-Z][a-z]+(ed|ated|ized|ted|ned|sed)|^(Led|Built|Achieved|Created|Developed|Managed|Increased|Reduced|Improved|Generated|Launched|Delivered|Implemented)/i.test(text) &&
+    text.length > 15 &&
+    text.length < 300
+  );
+}
+
+function extractSimpleBullets(html: string): ResumeBullet[] {
+  // Create a DOM from the HTML
+  const dom = new JSDOM(html);
+  const document = dom.window.document;
+  
+  const paragraphs = Array.from(document.querySelectorAll('p'));
+  const contentBullets: ResumeBullet[] = [];
+
+  // Process every paragraph in the document
+  paragraphs.forEach(p => {
+    const text = p.textContent?.trim() || '';
+    
+    // If this looks like a content bullet, add it
+    if (isContentBullet(text)) {
+      contentBullets.push({
+        id: uuidv4(),
+        text,
+        level: 0
+      });
+    }
+  });
+
+  return contentBullets;
 } 
